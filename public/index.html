@@ -1,0 +1,1468 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <title>RADIO.GS</title>
+    <meta name="theme-color" content="#030303">
+    <meta name="description" content="Shareable Soundcloud-enhanced Radio. Opensource.">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta http-equiv='X-UA-Compatible' content='IE=edge' />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://clh.do/radio" />
+    <meta property="og:title" content="RADIO.GS" />
+    <meta property="og:image" content="https://clh.do/opengraph.png" />
+    <meta property="og:site_name" content="RADIO.GS" />
+    <meta property="og:description" content="Shareable Soundcloud-enhanced Radio. Opensource." />
+    <meta name="robots" content="noindex,notranslate" />
+    <meta name="msapplication-tap-highlight" content="no" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="RADIO.GS" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+    <link rel="icon" href="/favicon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-startup-image" href="/apple-splash.png" />
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@400;500&family=Permanent+Marker&display=swap" rel="stylesheet">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://w.soundcloud.com/player/api.js"></script>
+
+    <style>
+        :root {
+            --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+            --accent: #D4FF00;
+            --bg-dark: #030303;
+            --surface: #0A0A0A;
+            --text-main: #ffffff;
+            --text-muted: #71717a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body, html {
+            height: 100%;
+            width: 100%;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            antialiased: true;
+        }
+
+        /* Ambient Background */
+        #ambient-bg {
+            position: fixed;
+            inset: -20%;
+            z-index: 0;
+            background-size: cover;
+            background-position: center;
+            filter: blur(100px) brightness(0.4) saturate(1.2);
+            opacity: 0;
+            transition: opacity 1.5s ease, background-image 1s ease-in-out;
+            pointer-events: none;
+            will-change: opacity;
+        }
+
+        .noise-overlay {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 50;
+            opacity: 0.04;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+        }
+
+        #canvas-container {
+            position: fixed;
+            inset: 0;
+            z-index: 1;
+            mix-blend-mode: screen;
+        }
+
+        /* Landing Screen */
+        #landing {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background-color: var(--bg-dark);
+            transition: transform 0.8s var(--ease-out-expo);
+        }
+
+        .landing-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2rem;
+            z-index: 10;
+        }
+
+        .landing-title {
+            font-size: 3.48rem;
+            font-weight: 800;
+            letter-spacing: -0.05em;
+            text-align: center;
+        }
+
+        .marker-text {
+            font-family: 'Permanent Marker', cursive;
+            color: #ffffff;
+            margin-left: 0.5rem;
+            transition: color 1s ease;
+        }
+
+        .btn-start {
+            position: relative;
+            padding: 1rem 2.5rem;
+            background: black;
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            letter-spacing: 0.2em;
+            cursor: pointer;
+            overflow: hidden;
+            transition: border-color 0.3s;
+        }
+
+        .btn-start:hover {
+            border-color: var(--accent);
+            color: var(--accent) !important;
+        }
+
+        .btn-start::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; width: 100%; height: 0;
+            background: var(--accent);
+            z-index: -1;
+            transition: height 0.3s ease;
+        }
+
+        .btn-start:hover::after {
+            height: 100%;
+        }
+
+        .btn-start:hover span {
+            color: var(--accent);
+        }
+
+        /* Main UI */
+        #player-ui {
+            position: fixed;
+            inset: 0;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: clamp(1.5rem, 5vw, 3rem);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 1s ease;
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: auto;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .logo {
+            font-size: clamp(1rem, 2.5vw, 1.25rem);
+            font-weight: 700;
+            mix-blend-mode: exclusion;
+            white-space: nowrap;
+            color: var(--text-main);
+            text-decoration: none;
+        }
+
+        .status-block {
+            top: 0;
+            right: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-dot {
+            display: none;
+            width: 60px;
+            height: 4px;
+            border-radius: 2px;
+            background: var(--text-muted);
+        }
+
+        .status-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: var(--text-muted);
+        }
+
+        .btn-logs {
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-logs:hover {
+            border-color: rgba(255,255,255,0.3);
+            color: white;
+        }
+
+        /* Center Piece (Artwork + Permanent Title) */
+        .center-stage {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2rem;
+            width: 100%;
+            pointer-events: none;
+        }
+
+        .tilt-container {
+            perspective: 1200px;
+    width: auto;
+    max-height: 50vh;
+    max-width: 79%;
+            aspect-ratio: 1;
+            pointer-events: auto;
+        }
+
+.artwork-card {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: #111;
+    border-radius: 4px;
+    transform-style: preserve-3d; /* CRUCIAL pour l'effet 3D */
+    box-shadow: 0 30px 60px -12px rgba(0,0,0,0.8);
+    transition: transform 0.1s var(--ease-out-expo);
+}
+
+.permanent-track-title {
+    position: absolute;
+    /* On le place au milieu du parent */
+    left: 50%;
+    bottom: -60px; 
+    
+    /* CORRECTION : On combine le centrage (-50%) ET la profondeur (50px) dans la même ligne */
+    transform: translateX(-50%) translateZ(50px);
+    
+    /* On s'assure que le texte lui-même est centré */
+    text-align: center;
+    width: 100%; /* Largeur augmentée pour éviter les retours à la ligne */
+    
+    font-family: 'Permanent Marker', cursive;
+    font-size: clamp(1.2rem, 4vw, 2rem);
+    color: var(--accent);
+    text-shadow: 0 10px 20px rgba(0,0,0,0.5);
+    opacity: 0;
+    transition: all 0.6s var(--ease-out-expo), color 0.3s ease;
+    text-decoration: none;
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+/* On s'assure que le titre devient visible quand la radio est active */
+.active .permanent-track-title {
+    opacity: 1;
+}
+
+        #artwork {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 4px;
+            opacity: 0.5;
+            filter: grayscale(1);
+            transition: all 0.8s ease;
+        }
+
+        .glare {
+            position: absolute;
+            inset: 0;
+            border-radius: 4px;
+            pointer-events: none;
+            opacity: 0;
+            background: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.2), transparent 60%);
+        }
+
+        /* LE TITRE PERMANENT MARKER (LIEN) */
+        .permanent-track-title:hover {
+            color: white;
+        }
+
+        /* Footer Controls */
+        .footer-controls {
+            width: 100%;
+            pointer-events: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .meta-info {
+            max-width: 500px;
+        }
+
+        .artist-link {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--accent);
+            text-decoration: none;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-top: 0.5rem;
+            display: block;
+            transition: color 0.3s;
+        }
+
+        .artist-link:hover {
+            color: white;
+            text-decoration: underline;
+        }
+
+        .controls-wrapper {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1.5rem;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            padding-top: 1.5rem;
+        }
+
+        .btn-group {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .btn-circle {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: transparent;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-circle:hover {
+            background: white;
+            color: black;
+        }
+
+        .btn-play {
+            width: 56px;
+            height: 56px;
+            background: var(--accent);
+            color: black;
+            border: none;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3), 0 0 10px var(--accent);
+        }
+
+        .btn-play:hover {
+            transform: scale(1.05);
+            background: var(--accent);
+        }
+
+        .progress-container {
+            flex: 1;
+            min-width: 200px;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .time-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-muted);
+            width: 40px;
+        }
+
+        .progress-bar-bg {
+            flex: 1;
+            height: 2px;
+            background: rgba(255,255,255,0.1);
+            position: relative;
+            cursor: pointer;
+        }
+
+        .progress-bar-fill {
+            position: absolute;
+            left: 0; top: -1px;
+            height: 4px;
+            background: var(--accent);
+            width: 0%;
+            box-shadow: 0 0 10px var(--accent);
+            transition: width 0.1s linear;
+        }
+
+        .system-data {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            color: var(--text-muted);
+            text-align: right;
+        }
+
+        .drawer-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid #111;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .history-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+        }
+
+        .history-item {
+            padding-bottom: 1rem;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid #111;
+        }
+
+        /* LIENS LOGS */
+        .history-link {
+            text-decoration: none;
+            color: white;
+            font-size: 11px;
+            display: block;
+            margin-bottom: 2px;
+            transition: color 0.3s ease;
+        }
+
+        .history-link:hover {
+            color: var(--accent);
+        }
+
+        /* Reveal Animation */
+        .reveal-text span {
+            display: block;
+            transform: translateY(100%);
+            transition: transform 1s var(--ease-out-expo);
+        }
+
+        .active .reveal-text span {
+            transform: translateY(0);
+        }
+
+        .hidden { display: none !important; }
+
+        /* Style du moteur de recherche */
+        #station-search {
+            background: none;
+            border: none;
+            border-bottom: 1px solid #1a1a1a; /* Bordure sombre par défaut */
+            color: var(--accent);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            padding: 0.8rem;
+            width: 250px;
+            outline: none;
+            text-align: center;
+            margin-bottom: 1.5rem;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            transition: all 0.4s var(--ease-out-expo);
+            opacity: 0.8;
+        }
+
+        #station-search:focus {
+            border-bottom: 1px solid var(--accent);
+            opacity: 1;
+            width: 280px; /* Petit effet d'élargissement à la Apple */
+            box-shadow: 0 10px 20px -10px rgba(212, 255, 0, 0.2);
+        }
+
+        #station-search::placeholder {
+            color: #333;
+            transition: color 0.3s ease;
+        }
+
+        #station-search:focus::placeholder {
+            color: #555;
+        }
+
+        /* Animation des boutons lors du filtrage */
+        #station-selector .btn-start {
+            transition: opacity 0.3s ease, transform 0.3s var(--ease-out-expo), display 0.3s allow-discrete;
+        }
+
+        /* Pour éviter que le ADD_NEW_STATION ne bouge trop bizarrement */
+        .landing-content {
+            min-height: 400px; /* Stabilise le layout pendant la recherche */
+            justify-content: center;
+        }
+
+        /* Container de la liste pour permettre le scroll interne si besoin */
+        #station-selector {
+            display: flex;
+            flex-wrap: wrap; /* L'effet "essaim" */
+            justify-content: center;
+            gap: 1rem;
+            width: 100%;
+            max-width: 1200px; /* Largeur max sur desktop */
+            padding: 2rem;
+            overflow-y: auto;
+            max-height: 60vh; /* Limite la hauteur pour garder le reste visible */
+        }
+
+        /* Rendre la zone de recherche sticky */
+        .search-wrapper {
+            position: sticky;
+            top: 0;
+            z-index: 110;
+            background: var(--bg-dark); /* Cache les boutons qui passent dessous */
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            padding: 2rem 0;
+        }
+
+        /* Ajustement des boutons pour le desktop */
+        .btn-start {
+            min-width: 200px; /* Évite qu'ils soient trop étroits */
+            flex: 0 1 auto;
+        }
+
+        /* Custom Scrollbar pour rester discret (KISS) */
+        #station-selector::-webkit-scrollbar { width: 4px; }
+        #station-selector::-webkit-scrollbar-track { background: transparent; }
+        #station-selector::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
+
+        .tab-btn {
+            flex: 1;
+            background: none;
+            border: none;
+            padding: 1rem;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border-bottom: 2px solid transparent;
+        }
+
+        .tab-btn.active {
+            color: var(--accent);
+            background: rgba(212, 255, 0, 0.05);
+            border-bottom: 2px solid var(--accent);
+        }
+
+        .tab-content { animation: fadeIn 0.4s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        @media (max-width: 768px) {
+            .system-data { display: none; }
+            .controls-wrapper { flex-direction: column; align-items: center; }
+            .progress-container { width: 100%; }
+            .meta-info { text-align: center; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ambient-bg"></div>
+    <div class="noise-overlay"></div>
+    <div id="canvas-container"></div>
+    
+    <div id="sc-engine-container" class="hidden"></div>
+
+    <!-- Start Overlay -->
+     <div id="landing">
+        <div class="landing-content" style="width: 90%; max-width: 1400px;">
+            <h1 class="landing-title">
+                RADIO<span class="marker-text">.GS</span>
+            </h1>
+            
+            <div class="search-wrapper">
+                <input type="text" id="station-search" class="hidden" placeholder="SEARCH_STATION...">
+            </div>
+
+            <div id="station-selector">
+                </div>
+            
+            <button onclick="app.createNewStation()" class="btn-logs" style="margin-top: 2rem; width: 250px; border-style: dashed">
+                + ADD_NEW_STATION
+            </button>
+
+            <div style="position: absolute; bottom: 3rem; font-family: 'JetBrains Mono'; font-size: 10px; color: #444; letter-spacing: -0.03em;">
+                RADIO.GS v0.7 // will be opensourced on v1
+            </div>
+        </div>
+    </div>
+
+    <!-- UI Layer -->
+    <main id="player-ui">
+        <header>
+            <div class="header-left">
+                <a href="#" onclick="app.goBackToLanding()" class="logo"><span class="marker-text white">CLH</span></a>
+            </div>
+            <div class="header-right">
+                <span class="status-block">
+                    <span id="status-text" class="status-text">Standby</span>
+                    <span id="status-indicator" class="status-dot"></span>
+                </span>
+                <button onclick="app.toggleSystemMenu()" class="btn-logs" style="padding: 0.5rem 0.8rem;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+                </button>
+
+                <div id="system-modal" class="hidden" style="position:fixed; inset:0; z-index:400; background:rgba(0,0,0,0.85); backdrop-filter:blur(30px); display:flex; align-items:center; justify-content:center;">
+                    <div style="width:min(90%, 450px); background:var(--surface); border:1px solid #1a1a1a; border-radius:12px; overflow:hidden; box-shadow:0 40px 100px rgba(0,0,0,0.8);">
+                        
+                        <div style="display:flex; border-bottom:1px solid #1a1a1a; background:#050505;">
+                            <button onclick="app.switchTab('edit')" class="tab-btn active" data-tab="edit">EDIT</button>
+                            <button onclick="app.switchTab('share')" class="tab-btn" data-tab="share">SHARE</button>
+                            <button onclick="app.switchTab('logs')" class="tab-btn" data-tab="logs">LOGS</button>
+                            <button onclick="app.toggleSystemMenu()" style="margin-left:auto; background:none; border:none; color:#444; padding:0 1rem; cursor:pointer;">&times;</button>
+                        </div>
+
+                        <div style="padding:1.5rem; min-height:320px;">
+                            <div id="tab-edit" class="tab-content">
+                                <textarea id="playlist-data" style="width:100%; height:250px; background:#000; border:1px solid #111; color:#fff; font-family:'JetBrains Mono'; font-size:11px; padding:1rem; outline:none;"></textarea>
+                                <button onclick="app.savePlaylists()" style="width:100%; margin-top:1rem; background:var(--accent); border:none; padding:0.8rem; font-family:'JetBrains Mono'; font-weight:800; cursor:pointer;">SAVE_CHANGES</button>
+                            </div>
+
+                            <div id="tab-share" class="tab-content hidden" style="text-align:center;">
+                                <div id="qrcode-container" style="background:white; padding:1rem; display:inline-block; border-radius:8px; margin-bottom:1rem;">
+                                    <img id="qrcode-img" src="" style="display:block; width:200px; height:200px;">
+                                </div>
+                                <p style="font-family:'JetBrains Mono'; font-size:9px; color:var(--text-muted); margin-bottom:1.5rem;">SCAN_TO_SYNC_STATION</p>
+                                <button onclick="app.generateShareLink()" class="btn-logs" style="width:100%">COPY_GLOBAL_SHARE_URL</button>
+                            </div>
+
+                            <div id="tab-logs" class="tab-content hidden" style="max-height:300px; overflow-y:auto;">
+                                <div id="modal-history-list"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Center Stage : Artwork + Title under it -->
+        <div class="center-stage reveal-text">
+            <div id="tilt-container" class="tilt-container">
+                <div id="artwork-card" class="artwork-card">
+                    <img id="artwork" src="" alt="Album Art">
+                    <div class="glare"></div>
+		    <a href="#" id="permanent-title" target="_blank" class="permanent-track-title">...</a>
+                </div>
+            </div>
+        </div>
+
+        <section class="footer-controls">
+            <div class="meta-info reveal-text">
+                <span>
+                    <a href="#" id="artist-name" target="_blank" class="artist-link">
+                        WAITING FOR SIGNAL
+                    </a>
+                </span>
+            </div>
+
+            <div class="controls-wrapper">
+                <div class="btn-group">
+                    <button onclick="app.scan()" class="btn-circle">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+                    </button>
+                    <button onclick="app.togglePlay()" class="btn-circle btn-play">
+                        <svg id="icon-play" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                        <svg id="icon-pause" class="hidden" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                    </button>
+                    <button onclick="app.scan()" class="btn-circle">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+                    </button>
+                </div>
+
+                <div class="progress-container">
+                    <span id="curr-time" class="time-text">0:00</span>
+                    <div class="progress-bar-bg" id="progress-area">
+                        <div id="progress-bar" class="progress-bar-fill"></div>
+                    </div>
+                    <span id="total-time" class="time-text">0:00</span>
+                </div>
+
+                <div class="system-data">
+                    <div>FREQ: <span id="freq-id" style="color:white">---</span> MHZ</div>
+                    <div>BITRATE: 320KBPS</div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+window.addEventListener('unhandledrejection', function(event) {
+    if (event.reason && event.reason.name === 'AbortError') {
+        event.preventDefault(); // Empêche l'affichage dans la console
+    }
+});
+
+        /** BOKEH SCENE (THREE.JS) **/
+        class BokehScene {
+            constructor() {
+                this.container = document.getElementById('canvas-container');
+                this.scene = new THREE.Scene();
+                this.scene.fog = new THREE.FogExp2(0x000000, 0.002);
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                this.camera.position.z = 60;
+                this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+                this.container.appendChild(this.renderer.domElement);
+
+                this.group = new THREE.Group();
+                this.scene.add(this.group);
+
+                this.mouseX = 0; this.mouseY = 0;
+                this.targetRotationX = 0; this.targetRotationY = 0;
+
+                this.initParticles();
+                window.addEventListener('resize', this.onResize.bind(this));
+                this.animate();
+            }
+
+            initParticles() {
+                const geometry = new THREE.BufferGeometry();
+                const vertices = [];
+                for (let i = 0; i < 400; i++) {
+                    vertices.push((Math.random() - 0.5) * 200, (Math.random() - 0.5) * 200, (Math.random() - 0.5) * 150);
+                }
+                geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                const material = new THREE.PointsMaterial({
+                    color: 0xffffff, size: 1.2, transparent: true, opacity: 0.3,
+                    map: this.createCircleTexture(), blending: THREE.AdditiveBlending, depthWrite: false
+                });
+                this.particleSystem = new THREE.Points(geometry, material);
+                this.group.add(this.particleSystem);
+            }
+
+            createCircleTexture() {
+                const canvas = document.createElement('canvas');
+                canvas.width = 32; canvas.height = 32;
+                const ctx = canvas.getContext('2d');
+                const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+                grad.addColorStop(0, 'rgba(255,255,255,1)');
+                grad.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, 32, 32);
+                return new THREE.CanvasTexture(canvas);
+            }
+
+            setMode(mode) {
+                if (mode === 'tuning') this.particleSystem.material.opacity = 0.8;
+                else if (mode === 'playing') this.particleSystem.material.opacity = 0.4;
+                else this.particleSystem.material.opacity = 0.2;
+            }
+
+            onResize() {
+                this.camera.aspect = window.innerWidth / window.innerHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+
+            animate() {
+                requestAnimationFrame(this.animate.bind(this));
+                this.particleSystem.rotation.z += 0.0003;
+                this.group.rotation.x += (this.mouseY * 0.1 - this.group.rotation.x) * 0.05;
+                this.group.rotation.y += (this.mouseX * 0.1 - this.group.rotation.y) * 0.05;
+                this.renderer.render(this.scene, this.camera);
+            }
+        }
+
+        /** ARTWORK TILT **/
+
+        class ArtworkTilt {
+            constructor() {
+                this.card = document.getElementById('artwork-card');
+                this.container = document.getElementById('tilt-container');
+                this.glare = document.querySelector('.glare');
+                this.idleTimer = null; // Timer pour détecter l'inactivité
+
+                document.addEventListener('mousemove', (e) => {
+                    const nx = (e.clientX / window.innerWidth) * 2 - 1;
+                    const ny = (e.clientY / window.innerHeight) * 2 - 1;
+                    if(app.bokeh) { app.bokeh.mouseX = nx; app.bokeh.mouseY = ny; }
+                    
+                    this.handleMove(e);
+                });
+
+                document.addEventListener('mouseleave', () => this.reset());
+            }
+
+            handleMove(e) {
+                if (!this.container) return;
+
+                // 1. Annuler le timer précédent dès que la souris bouge
+                clearTimeout(this.idleTimer);
+
+                const bounds = this.container.getBoundingClientRect();
+                const centerX = bounds.left + bounds.width / 2;
+                const centerY = bounds.top + bounds.height / 2;
+                const rotX = -(e.clientY - centerY) / 20;
+                const rotY = (e.clientX - centerX) / 20;
+
+                // Appliquer l'inclinaison
+                this.card.style.transition = "transform 0.1s var(--ease-out-expo), opacity 0.8s ease"; // Transition courte pour le suivi
+                this.card.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg) scale(1.05)`;
+                this.glare.style.opacity = '1';
+
+                // 2. Lancer le compte à rebours de 2 secondes (2000ms)
+                this.idleTimer = setTimeout(() => {
+                    this.reset();
+                }, 400);
+            }
+
+            reset() {
+                // Appliquer une transition plus lente et fluide pour le retour au centre
+                this.card.style.transition = "transform 2.3s cubic-bezier(0.25, 1, 0.5, 1)"; 
+                this.card.style.transform = `rotateX(0deg) rotateY(0deg) scale(1)`;
+                this.glare.style.opacity = '0';
+            }
+        }
+
+        /** AUDIO APP LOGIC **/
+        class AudioApp {
+            constructor() {
+
+                const defaultStations = {
+                    "clh": { label: "CLH", urls:[
+                        "https://soundcloud.com/clhmusic/sets/cynicism-kills",
+                        "https://soundcloud.com/clhmusic/sets/plein-chomage",
+                        "https://soundcloud.com/clhmusic/sets/freedoms-classroom-2",
+                        "https://soundcloud.com/clhmusic/sets/pleno-desemprego",
+                        "https://soundcloud.com/clhmusic/sets/deviens-toi-meme",
+                        "https://soundcloud.com/clhmusic/sets/happy2026",
+                        "https://soundcloud.com/clhmusic/sets/discipline",
+                        "https://soundcloud.com/clhmusic/sets/we-are-fuck-the-norm",
+                        "https://soundcloud.com/clhmusic/sets/lazy-for-creation",
+                        "https://soundcloud.com/clhmusic/sets/cynicism-kills",
+                        "https://soundcloud.com/clhmusic/sets/plein-chomage",
+                        "https://soundcloud.com/clhmusic/sets/freedoms-classroom-2",
+                        "https://soundcloud.com/clhmusic/sets/pleno-desemprego",
+                        "https://soundcloud.com/clhmusic/sets/deviens-toi-meme",
+                        "https://soundcloud.com/clhmusic/sets/paul-lafargue-le-droit-a-la-paresse-teaser-lien-librement-accesible-dans-la-description",
+                        "https://soundcloud.com/clhmusic/sets/still-i-show-up",
+                        "https://soundcloud.com/clhmusic/sets/6-7-meme",
+                        "https://soundcloud.com/clhmusic/sets/we-may-have-just-one-life-reprise",
+                        "https://soundcloud.com/clhmusic/sets/happy2026",
+                        "https://soundcloud.com/clhmusic/sets/discipline",
+                        "https://soundcloud.com/clhmusic/sets/lazy-for-creation",
+                        "https://soundcloud.com/clhmusic/sets/saine-paresse-reprise",
+                        "https://soundcloud.com/clhmusic/sets/ux-or-die-trying-part-2",
+                        "https://soundcloud.com/clhmusic/sets/ux-or-die-trying"
+                    ]},
+                    "electro": { label: "zemix Electro", urls:[
+                        "https://soundcloud.com/clhmusic/sets/r-d-j45",
+                        "https://soundcloud.com/clhmusic/sets/clh-do-the-funk"
+                    ]},
+                    "funk": { label: "zemix Funk", urls:[
+                        "https://soundcloud.com/clhmusic/sets/i-like-it-funk-sometimes"
+                    ]},
+                    "rock": { label: "zemix Rock", urls:[
+                        "https://soundcloud.com/clhmusic/sets/rock-francais",
+                        "https://soundcloud.com/clhmusic/sets/punk-en",
+                        "https://soundcloud.com/clhmusic/sets/punk-fr",
+                        "https://soundcloud.com/clhmusic/sets/sounds-from-rikikikiki",
+                        "https://soundcloud.com/clhmusic/sets/rock-francais",
+                        "https://soundcloud.com/clhmusic/sets/i-like-it-punk-sometimes",
+                        "https://soundcloud.com/clhmusic/sets/i-like-it-raw-sometimes",
+                        "https://soundcloud.com/pennywisdom/sets/never-gonna-die-3",
+                        "https://soundcloud.com/pennywisdom/sets/all-or-nothing-23"
+                    ]},
+                    "hip-hop": { label: "zemix Hip-Hop", urls:[
+                        "https://soundcloud.com/clhmusic/sets/lourd-ep",
+                        "https://soundcloud.com/clhmusic/sets/hip-hop",
+                        "https://soundcloud.com/clhmusic/sets/hip-hop-fr",
+                        "https://soundcloud.com/clhmusic/sets/hip-hop-en",
+                        "https://soundcloud.com/clhmusic/sets/lourd-ep",
+                        "https://soundcloud.com/clhmusic/sets/lourd-ep",
+                        "https://soundcloud.com/clhmusic/sets/lourd-ep",
+                        "https://soundcloud.com/clhmusic/sets/lourd-ep",
+                        "https://soundcloud.com/clhmusic/sets/lourd-ep",
+                        "https://soundcloud.com/clhmusic/sets/lourd-ep",
+                        "https://soundcloud.com/clhmusic/sets/lourd-ep",
+                        "https://soundcloud.com/clhmusic/sets/drum-d-draft-a-must-to-listen",
+                        "https://soundcloud.com/kenyarkana/sets/etat-durgence-2",
+                        "https://soundcloud.com/kenyarkana/sets/tout-tourne-autour-du-soleil",
+                        "https://soundcloud.com/clhmusic/sets/lourd-ep"
+                    ]},
+                    "drumd": { label: "DRUMD", urls:[
+                        "https://soundcloud.com/clhmusic/sets/drum-d-draft-a-must-to-listen"
+                    ]},
+                    "quessada": { label: "Quessada", urls:[
+                        "https://soundcloud.com/quessada/sets/super-connard",
+                        "https://soundcloud.com/quessada/sets/super-sympa",
+                        "https://soundcloud.com/quessada/sets/jai-rate-ma-vie",
+                        "https://soundcloud.com/quessada/sets/la-fin-du-monde",
+                        "https://soundcloud.com/quessada/sets/super-connard",
+                        "https://soundcloud.com/quessada/sets/super-sympa",
+                        "https://soundcloud.com/quessada/sets/jai-rate-ma-vie",
+                        "https://soundcloud.com/quessada/sets/la-fin-du-monde"
+                    ]},
+                    "kenyarkana": { label: "Keny Arkana", urls:[
+                        "https://soundcloud.com/kenyarkana/sets/avant-lexode",
+                        "https://soundcloud.com/kenyarkana/sets/tout-tourne-autour-du-soleil",
+                        "https://soundcloud.com/kenyarkana/sets/lesquisse-3",
+                        "https://soundcloud.com/kenyarkana/sets/etat-durgence-2",
+                        "https://soundcloud.com/kenyarkana/sets/entre-ciment-et-belle-etoile",
+                        "https://soundcloud.com/kenyarkana/sets/desobeissance",
+                        "https://soundcloud.com/kenyarkana/sets/lesquisse-1",
+                        "https://soundcloud.com/kenyarkana/sets/lesquisse-2"
+                    ]},
+                    "bojuju": { label: "Julien Ribot", urls:[
+                        "https://soundcloud.com/julienribot/sets/do-you-feel-9-2",
+                        "https://soundcloud.com/julienribot/sets/songs-for-coco-1"
+                    ]}
+                };
+
+                const saved = localStorage.getItem('radio_gs_data');
+                this.stations = saved ? JSON.parse(saved) : defaultStations;
+                
+                this.checkImport();
+
+                const hash = decodeURIComponent(window.location.hash.substring(1));
+                const firstStation = Object.keys(this.stations)[0];
+                this.currentStation = this.stations[hash] ? hash : firstStation;
+                
+                this.playlists = this.stations[this.currentStation].urls;
+
+                this.widget = null;
+                this.isPlaying = false;
+                this.isTuning = false;
+                
+                this.ui = {
+                    landing: document.getElementById('landing'),
+                    player: document.getElementById('player-ui'),
+                    permTitle: document.getElementById('permanent-title'),
+                    artist: document.getElementById('artist-name'),
+                    art: document.getElementById('artwork'),
+                    playIcon: document.getElementById('icon-play'),
+                    pauseIcon: document.getElementById('icon-pause'),
+                    progBar: document.getElementById('progress-bar'),
+                    currTime: document.getElementById('curr-time'),
+                    totalTime: document.getElementById('total-time'),
+                    status: document.getElementById('status-text'),
+                    indicator: document.getElementById('status-indicator'),
+                    freq: document.getElementById('freq-id'),
+                    ambient: document.getElementById('ambient-bg'),
+                    history: document.getElementById('modal-history-list'),
+                    editorModal: document.getElementById('system-modal'),
+                    editorArea: document.getElementById('playlist-data')
+                };
+
+                document.getElementById('progress-area').addEventListener('click', (e) => {
+                    if(!this.widget) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const p = (e.clientX - rect.left) / rect.width;
+                    this.widget.getDuration(d => this.widget.seekTo(d * p));
+                });
+            }
+
+            init(slug) {
+                const station = this.stations[slug];
+                if (!station) return;
+
+                this.currentStation = slug;
+                this.playlists = station.urls;
+                window.location.hash = slug;
+
+                // Met à jour le logo dynamiquement
+                document.querySelector('.logo .marker-text').innerText = station.label.toUpperCase();
+
+                // Singleton pour les scènes (évite les doublons)
+                if (!this.bokeh) this.bokeh = new BokehScene();
+                if (!this.tilt) this.tilt = new ArtworkTilt();
+
+                this.ui.landing.style.transform = 'translateY(-100%)';
+                setTimeout(() => {
+                    this.ui.player.style.opacity = '1';
+                    this.ui.player.style.pointerEvents = 'auto';
+                    document.querySelectorAll('.reveal-text').forEach(el => el.classList.add('active'));
+                }, 800);
+                
+                this.scan();
+            }
+
+            renderStationSelector() {
+                const container = document.getElementById('station-selector');
+                const searchInput = document.getElementById('station-search');
+                const slugs = Object.keys(this.stations);
+                
+                container.innerHTML = '';
+
+                // Affiche la recherche seulement si > 3 stations
+                if (slugs.length > 3) {
+                    searchInput.classList.remove('hidden');
+                }
+
+                const sortedSlugs = slugs.sort((a, b) => 
+                    this.stations[a].label.localeCompare(this.stations[b].label)
+                );
+
+                sortedSlugs.forEach(slug => {
+                    const station = this.stations[slug];
+                    const btn = document.createElement('button');
+                    btn.className = 'btn-start';
+                    btn.setAttribute('data-label', station.label.toLowerCase()); // Pour le filtrage
+                    
+                    if (window.location.hash === `#${slug}`) btn.style.borderColor = 'var(--accent)';
+
+                    btn.innerHTML = `<span>${station.label.toUpperCase()}</span>`;
+                    btn.onclick = () => { window.location.hash = slug; this.init(slug); };
+                    container.appendChild(btn);
+                });
+
+                // Logique de recherche en temps réel
+                searchInput.oninput = (e) => {
+                    const val = e.target.value.toLowerCase();
+                    const buttons = container.querySelectorAll('.btn-start');
+                    
+                    buttons.forEach(btn => {
+                        const match = btn.getAttribute('data-label').includes(val);
+                        btn.style.display = match ? 'flex' : 'none';
+                        btn.style.opacity = val.length > 0 ? (match ? '1' : '0') : '1';
+                    });
+                };
+            }
+
+            generateShareLink() {
+                const data = {
+                    l: this.stations[this.currentStation].label,
+                    u: this.stations[this.currentStation].urls
+                };
+                // On encode en base64 pour éviter les problèmes de caractères spéciaux dans le hash
+                const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+                const shareUrl = `${window.location.origin}${window.location.pathname}#import:${encoded}`;
+                
+                // On copie dans le presse-papier
+                navigator.clipboard.writeText(shareUrl).then(() => {
+                    alert("Lien de partage copié ! (Zéro-Server)");
+                });
+            }
+
+            // Dans ta classe AudioApp
+            goBackToLanding() {
+                window.location.hash = "";
+                this.ui.player.style.opacity = '0';
+                this.ui.player.style.pointerEvents = 'none';
+                this.ui.landing.style.transform = 'translateY(0)';
+                if(this.widget) this.widget.pause();
+            }
+
+            checkImport() {
+                const hash = window.location.hash;
+                if (hash.startsWith('#import:')) {
+                    try {
+                        const rawData = hash.split(':')[1];
+                        const decoded = JSON.parse(decodeURIComponent(escape(atob(rawData))));
+
+                        const baseSlug = this.slugify(decoded.l);
+                        let targetSlug = baseSlug;
+                        let targetLabel = decoded.l;
+                        const existing = this.stations[baseSlug];
+
+                        if (existing) {
+                            const sameUrls = JSON.stringify(existing.urls) === JSON.stringify(decoded.u);
+                            if (sameUrls) {
+                                // Already imported, just switch to it.
+                                window.location.hash = baseSlug;
+                                return;
+                            }
+                            const overwrite = confirm(
+                                `Station "${existing.label}" already exists locally with different tracks.\n\n` +
+                                `OK = overwrite with shared version\nCancel = keep both (import as a copy)`
+                            );
+                            if (!overwrite) {
+                                let n = 2;
+                                while (this.stations[`${baseSlug}-${n}`]) n++;
+                                targetSlug = `${baseSlug}-${n}`;
+                                targetLabel = `${decoded.l} (${n})`;
+                            }
+                        }
+
+                        this.stations[targetSlug] = { label: targetLabel, urls: decoded.u };
+                        localStorage.setItem('radio_gs_data', JSON.stringify(this.stations));
+                        window.location.hash = targetSlug;
+                        alert(`Station "${targetLabel}" importée avec succès !`);
+                    } catch (e) {
+                        console.error("Erreur d'importation : données corrompues.");
+                    }
+                }
+            }
+
+            scan() {
+                if(this.isTuning) return;
+                this.isTuning = true;
+                this.updateStatus('SCANNING', 'var(--accent)');
+                this.bokeh.setMode('tuning');
+                this.ui.art.style.opacity = '0.2';
+                this.ui.art.style.filter = 'grayscale(1) blur(10px)';
+                
+                const url = this.playlists[Math.floor(Math.random() * this.playlists.length)];
+                this.ui.freq.innerText = (Math.random() * 100 + 88).toFixed(1);
+
+                if(!this.widget) {
+                    const container = document.getElementById('sc-engine-container');
+                    container.innerHTML = `<iframe id="sc-widget" src="https://w.soundcloud.com/player/?url=${url}&auto_play=false&show_artwork=true&visual=false&hide_related=true&show_comments=false&show_user=false&show_reposts=false" width="100%" height="166" scrolling="no" frameborder="no" allow="autoplay; encrypted-media"></iframe>`;
+
+                    this.widget = SC.Widget(document.getElementById('sc-widget'));
+                    this.widget.bind(SC.Widget.Events.READY, () => {
+                        this.widget.bind(SC.Widget.Events.PLAY, () => this.onPlay());
+                        this.widget.bind(SC.Widget.Events.PAUSE, () => this.onPause());
+                        this.widget.bind(SC.Widget.Events.FINISH, () => this.scan());
+                        this.widget.bind(SC.Widget.Events.PLAY_PROGRESS, (e) => this.onProgress(e));
+                        this.playRandom();
+                    });
+                } else {
+                    this.widget.load(url, { auto_play: false, callback: () => this.playRandom() });
+                }
+            }
+
+            toggleSystemMenu() {
+                const modal = document.getElementById('system-modal');
+                const isOpening = modal.classList.contains('hidden');
+                
+                modal.classList.toggle('hidden');
+
+                if (isOpening) {
+                    // 1. On injecte les URLs de la station actuelle dans le textarea
+                    // On utilise .join('\n') pour avoir une URL par ligne, bien propre.
+                    this.ui.editorArea.value = this.playlists.join('\n');
+
+                    // 2. On s'assure d'être sur l'onglet EDIT par défaut
+                    this.switchTab('edit');
+
+                    // 3. On synchronise les logs historiques
+                    const modalList = document.getElementById('modal-history-list');
+                    if (modalList) modalList.innerHTML = this.ui.history.innerHTML;
+                }
+            }
+
+            switchTab(tabId) {
+                // Boutons
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
+                // Contenus
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+                document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+
+                if (tabId === 'share') this.updateQRCode();
+            }
+
+            updateQRCode() {
+                const data = {
+                    l: this.stations[this.currentStation].label,
+                    u: this.stations[this.currentStation].urls
+                };
+                const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+                const shareUrl = `${window.location.origin}${window.location.pathname}#import:${encoded}`;
+                
+                // Utilisation d'une API QR Code gratuite (type QRServer ou GoQR)
+                const qrApi = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(shareUrl)}&color=000000&bgcolor=FFFFFF`;
+                document.getElementById('qrcode-img').src = qrApi;
+            }
+
+            toggleEditor() {
+                const isHidden = this.ui.editorModal.classList.contains('hidden');
+                if (isHidden) {
+                    // On affiche les playlists sous forme de liste propre (une par ligne)
+                    this.ui.editorArea.value = this.playlists.join('\n');
+                    this.ui.editorModal.classList.remove('hidden');
+                } else {
+                    this.ui.editorModal.classList.add('hidden');
+                }
+            }
+
+            slugify(text) {
+                return text
+                    .toString()
+                    .toLowerCase()
+                    .normalize('NFD') // Sépare les accents des lettres
+                    .replace(/[\u0300-\u036f]/g, '') // Supprime les accents
+                    .replace(/\s+/g, '-') // Remplace les espaces par des tirets
+                    .replace(/[^\w\-]+/g, '') // Supprime tout ce qui n'est pas mot ou tiret
+                    .replace(/\-\-+/g, '-') // Évite les doubles tirets
+                    .replace(/^-+/, '') // Supprime les tirets au début
+                    .replace(/-+$/, ''); // Supprime les tirets à la fin
+            }
+
+            createNewStation() {
+                const rawName = prompt("NOM DE LA RADIO :");
+                if (!rawName) return;
+
+                const slug = this.slugify(rawName);
+                
+                if (slug.length === 0) {
+                    alert("Nom invalide.");
+                    return;
+                }
+
+                if (this.stations[slug]) {
+                    alert("Cette station (slug) existe déjà.");
+                    return;
+                }
+
+                // On stocke un objet plutôt qu'un simple tableau pour garder le nom propre
+                this.stations[slug] = {
+                    label: rawName.trim(),
+                    urls: ["https://soundcloud.com/clhmusic/sets/r-d-j45"]
+                };
+
+                localStorage.setItem('radio_gs_data', JSON.stringify(this.stations));
+                this.renderStationSelector();
+            }
+
+            savePlaylists() {
+                const lines = this.ui.editorArea.value.split('\n')
+                    .map(line => line.trim())
+                    .filter(line => line.length > 5);
+
+                const STORAGE_KEY = 'radio_gs_data'; // Utilise une constante unique
+
+                // CAS 1 : SUPPRESSION
+                if (lines.length === 0) {
+                    const stationKeys = Object.keys(this.stations);
+                    
+                    if (stationKeys.length > 1) {
+                        if (confirm(`DELETE_STATION: ${this.stations[this.currentStation].label}?`)) {
+                            delete this.stations[this.currentStation];
+                            localStorage.setItem(STORAGE_KEY, JSON.stringify(this.stations));
+                            
+                            // Au lieu de reload, on nettoie et on retourne au landing
+                            window.location.hash = ""; 
+                            location.reload(); // Ici le reload est "safe" car on a vidé le hash
+                            return;
+                        }
+                    } else {
+                        alert("ACTION_DENIED: Minimum 1 station required.");
+                        return;
+                    }
+                }
+                
+                // CAS 2 : MISE À JOUR
+                if (lines.length > 0) {
+                    // On met à jour l'objet global
+                    this.stations[this.currentStation].urls = lines;
+                    // On met à jour la référence active pour le prochain scan()
+                    this.playlists = lines;
+                    
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.stations));
+                    
+                    this.ui.editorModal.classList.add('hidden');
+                    this.updateStatus(`STATION ${this.currentStation.toUpperCase()} UPDATED`, 'var(--accent)');
+                    
+                    // Petit feedback visuel avant de relancer
+                    setTimeout(() => this.scan(), 500);
+                }
+            }
+
+            playRandom() {
+                this.widget.getSounds(s => {
+                    if(!s || s.length === 0) return this.scan();
+                    
+                    // On choisit un morceau au hasard
+                    const randomIndex = Math.floor(Math.random() * s.length);
+                    this.widget.skip(randomIndex);
+
+                    // On attend un court instant que le widget soit prêt pour le nouveau morceau
+                    setTimeout(() => { 
+                        this.widget.play(); 
+                        this.isTuning = false; 
+                    }, 1200); // Augmenter légèrement à 1200ms pour laisser le buffer se créer
+                });
+            }
+
+            onPlay() {
+                this.isPlaying = true;
+                this.ui.playIcon.classList.add('hidden');
+                this.ui.pauseIcon.classList.remove('hidden');
+                this.updateStatus('LIVE', 'var(--accent)');
+                this.bokeh.setMode('playing');
+                this.ui.art.style.opacity = '1';
+                this.ui.art.style.filter = 'grayscale(0) blur(0)';
+                this.widget.getCurrentSound(s => this.updateTrack(s));
+            }
+
+            onPause() {
+                this.isPlaying = false;
+                this.ui.playIcon.classList.remove('hidden');
+                this.ui.pauseIcon.classList.add('hidden');
+                this.updateStatus('PAUSED', '#555');
+            }
+
+            onProgress(e) {
+                this.ui.progBar.style.width = (e.relativePosition * 100) + '%';
+                this.ui.currTime.innerText = this.formatTime(e.currentPosition);
+            }
+
+            updateTrack(s) {
+                if(!s) return;
+                this.ui.permTitle.innerText = s.title.toUpperCase();
+                this.ui.permTitle.href = s.permalink_url;
+                this.ui.artist.innerText = s.user.username;
+                this.ui.artist.href = s.permalink_url;
+                this.ui.totalTime.innerText = this.formatTime(s.duration);
+                
+                let img = s.artwork_url || s.user.avatar_url;
+                if(img) {
+                    const hd = img.replace('large', 't500x500');
+                    this.ui.art.src = hd;
+                    this.ui.ambient.style.backgroundImage = `url(${hd})`;
+                    this.ui.ambient.style.opacity = '1';
+                    this.extractColor(hd);
+                }
+                this.logHistory(s);
+            }
+
+            extractColor(url) {
+                const img = new Image();
+                img.crossOrigin = "Anonymous";
+                const fallback = () => document.documentElement.style.setProperty('--accent', '#D4FF00');
+                img.onerror = fallback;
+                img.onload = () => {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        canvas.width = 1; canvas.height = 1;
+                        ctx.drawImage(img, 0, 0, 1, 1);
+                        const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+                        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                        const color = brightness < 40 ? '#D4FF00' : `rgb(${r},${g},${b})`;
+                        document.documentElement.style.setProperty('--accent', color);
+                    } catch (e) {
+                        // Canvas read tainted — SoundCloud's CDN doesn't always send CORS headers.
+                        fallback();
+                    }
+                };
+                img.src = url;
+            }
+
+            logHistory(s) {
+                if (!s || !this.ui.history) return;
+                // Dedupe consecutive repeats — pause/resume or seek can refire PLAY.
+                if (this._lastLoggedId === s.id) return;
+                this._lastLoggedId = s.id;
+
+                const item = document.createElement('div');
+                item.className = 'history-item';
+                item.innerHTML = `
+                    <a href="${s.permalink_url}" target="_blank" class="history-link">${s.title.toUpperCase()}</a>
+                    <div style="font-size:9px; color:#555">${s.user.username}</div>
+                `;
+                this.ui.history.prepend(item);
+
+                // Cap list length so long sessions don't grow unbounded.
+                while (this.ui.history.children.length > 50) {
+                    this.ui.history.lastElementChild.remove();
+                }
+            }
+
+            updateStatus(text, color) {
+                this.ui.status.innerText = text;
+                this.ui.status.style.color = color;
+                this.ui.indicator.style.background = color;
+            }
+
+            formatTime(ms) {
+                const m = Math.floor(ms/60000);
+                const s = Math.floor((ms%60000)/1000);
+                return `${m}:${s < 10 ? '0' : ''}${s}`;
+            }
+
+            togglePlay() { this.widget.toggle(); }
+        }
+
+        const app = new AudioApp();
+        app.renderStationSelector();
+
+        const initialHash = decodeURIComponent(window.location.hash.substring(1));
+        if (initialHash && app.stations[initialHash]) {
+            app.init(initialHash);
+        }
+
+        // --- PWA: service worker registration + update toast ---
+        if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').then((reg) => {
+                    // When a new SW is installed while the page is open, notify.
+                    reg.addEventListener('updatefound', () => {
+                        const incoming = reg.installing;
+                        if (!incoming) return;
+                        incoming.addEventListener('statechange', () => {
+                            if (incoming.state === 'installed' && navigator.serviceWorker.controller) {
+                                showUpdateToast(incoming);
+                            }
+                        });
+                    });
+                }).catch((err) => console.warn('SW registration failed:', err));
+
+                // Reload once the new SW has taken control.
+                let reloading = false;
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    if (reloading) return;
+                    reloading = true;
+                    location.reload();
+                });
+            });
+        }
+
+        function showUpdateToast(worker) {
+            const el = document.createElement('div');
+            el.setAttribute('role', 'status');
+            el.style.cssText = `
+                position:fixed; bottom:1.5rem; left:50%; transform:translateX(-50%);
+                background:var(--bg-dark); border:1px solid var(--accent); color:var(--accent);
+                padding:0.75rem 1.25rem; font-family:'JetBrains Mono', monospace; font-size:10px;
+                letter-spacing:0.15em; text-transform:uppercase; z-index:9999; cursor:pointer;
+                box-shadow:0 10px 30px rgba(0,0,0,0.6);
+            `;
+            el.textContent = 'UPDATE_AVAILABLE // TAP_TO_RELOAD';
+            el.addEventListener('click', () => worker.postMessage({ type: 'SKIP_WAITING' }));
+            document.body.appendChild(el);
+        }
+    </script>
+</body>
+</html>
