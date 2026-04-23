@@ -32,6 +32,7 @@
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://w.soundcloud.com/player/api.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
 
     <style>
         :root {
@@ -741,6 +742,55 @@ window.addEventListener('unhandledrejection', function(event) {
     }
 });
 
+        /** SHARE-LINK FORMAT (see THINKING.md, SHARING.md)
+         *
+         * #import:v1:<lz-string> — payload is LZ-string-compressed TSV:
+         *   line 0 : station label
+         *   line N : "<provider-tag> <path>"
+         *
+         * The provider tag is mandatory so v2 of this app can route to
+         * other sources without a format bump. Add a new provider by
+         * adding an entry to PROVIDERS below.
+         */
+        const PROVIDERS = {
+            s: { prefix: 'https://soundcloud.com/' },
+        };
+
+        function collapseUrl(url) {
+            for (const [tag, { prefix }] of Object.entries(PROVIDERS)) {
+                if (url.startsWith(prefix)) return `${tag} ${url.slice(prefix.length)}`;
+            }
+            throw new Error(`Unsupported URL (no provider tag matches): ${url}`);
+        }
+
+        function expandUrl(line) {
+            const sep = line.indexOf(' ');
+            if (sep < 1) throw new Error(`Malformed entry: ${line}`);
+            const tag = line.slice(0, sep);
+            const path = line.slice(sep + 1);
+            const provider = PROVIDERS[tag];
+            if (!provider) throw new Error(`Unknown provider tag "${tag}" — this RADIO.GS build doesn't support it yet.`);
+            return provider.prefix + path;
+        }
+
+        function encodeSharePayload(label, urls) {
+            const body = [label, ...urls.map(collapseUrl)].join('\n');
+            return 'v1:' + LZString.compressToEncodedURIComponent(body);
+        }
+
+        function decodeSharePayload(body) {
+            const colon = body.indexOf(':');
+            if (colon < 1) throw new Error('Missing version marker.');
+            const version = body.slice(0, colon);
+            const rest = body.slice(colon + 1);
+            if (version !== 'v1') throw new Error(`Unsupported share-link version "${version}".`);
+            const decompressed = LZString.decompressFromEncodedURIComponent(rest);
+            if (!decompressed) throw new Error('Corrupted share payload.');
+            const lines = decompressed.split('\n');
+            if (lines.length < 2) throw new Error('Share payload has no URLs.');
+            return { label: lines[0], urls: lines.slice(1).map(expandUrl) };
+        }
+
         /** BOKEH SCENE (THREE.JS) **/
         class BokehScene {
             constructor() {
@@ -1070,14 +1120,16 @@ window.addEventListener('unhandledrejection', function(event) {
             }
 
             generateShareLink() {
-                const data = {
-                    l: this.stations[this.currentStation].label,
-                    u: this.stations[this.currentStation].urls
-                };
-                // On encode en base64 pour éviter les problèmes de caractères spéciaux dans le hash
-                const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+                const station = this.stations[this.currentStation];
+                let encoded;
+                try {
+                    encoded = encodeSharePayload(station.label, station.urls);
+                } catch (e) {
+                    alert(`Impossible de générer le lien : ${e.message}`);
+                    return;
+                }
                 const shareUrl = `${window.location.origin}${window.location.pathname}#import:${encoded}`;
-                
+
                 // On copie dans le presse-papier
                 navigator.clipboard.writeText(shareUrl).then(() => {
                     alert("Lien de partage copié ! (Zéro-Server)");
@@ -1095,42 +1147,41 @@ window.addEventListener('unhandledrejection', function(event) {
 
             checkImport() {
                 const hash = window.location.hash;
-                if (hash.startsWith('#import:')) {
-                    try {
-                        const rawData = hash.split(':')[1];
-                        const decoded = JSON.parse(decodeURIComponent(escape(atob(rawData))));
+                if (!hash.startsWith('#import:')) return;
+                try {
+                    const { label, urls } = decodeSharePayload(hash.slice('#import:'.length));
 
-                        const baseSlug = this.slugify(decoded.l);
-                        let targetSlug = baseSlug;
-                        let targetLabel = decoded.l;
-                        const existing = this.stations[baseSlug];
+                    const baseSlug = this.slugify(label);
+                    let targetSlug = baseSlug;
+                    let targetLabel = label;
+                    const existing = this.stations[baseSlug];
 
-                        if (existing) {
-                            const sameUrls = JSON.stringify(existing.urls) === JSON.stringify(decoded.u);
-                            if (sameUrls) {
-                                // Already imported, just switch to it.
-                                window.location.hash = baseSlug;
-                                return;
-                            }
-                            const overwrite = confirm(
-                                `Station "${existing.label}" already exists locally with different tracks.\n\n` +
-                                `OK = overwrite with shared version\nCancel = keep both (import as a copy)`
-                            );
-                            if (!overwrite) {
-                                let n = 2;
-                                while (this.stations[`${baseSlug}-${n}`]) n++;
-                                targetSlug = `${baseSlug}-${n}`;
-                                targetLabel = `${decoded.l} (${n})`;
-                            }
+                    if (existing) {
+                        const sameUrls = JSON.stringify(existing.urls) === JSON.stringify(urls);
+                        if (sameUrls) {
+                            // Already imported, just switch to it.
+                            window.location.hash = baseSlug;
+                            return;
                         }
-
-                        this.stations[targetSlug] = { label: targetLabel, urls: decoded.u };
-                        localStorage.setItem('radio_gs_data', JSON.stringify(this.stations));
-                        window.location.hash = targetSlug;
-                        alert(`Station "${targetLabel}" importée avec succès !`);
-                    } catch (e) {
-                        console.error("Erreur d'importation : données corrompues.");
+                        const overwrite = confirm(
+                            `Station "${existing.label}" already exists locally with different tracks.\n\n` +
+                            `OK = overwrite with shared version\nCancel = keep both (import as a copy)`
+                        );
+                        if (!overwrite) {
+                            let n = 2;
+                            while (this.stations[`${baseSlug}-${n}`]) n++;
+                            targetSlug = `${baseSlug}-${n}`;
+                            targetLabel = `${label} (${n})`;
+                        }
                     }
+
+                    this.stations[targetSlug] = { label: targetLabel, urls };
+                    localStorage.setItem('radio_gs_data', JSON.stringify(this.stations));
+                    window.location.hash = targetSlug;
+                    alert(`Station "${targetLabel}" importée avec succès !`);
+                } catch (e) {
+                    console.error("Erreur d'importation :", e);
+                    alert(`Erreur d'importation : ${e.message}`);
                 }
             }
 
@@ -1193,13 +1244,16 @@ window.addEventListener('unhandledrejection', function(event) {
             }
 
             updateQRCode() {
-                const data = {
-                    l: this.stations[this.currentStation].label,
-                    u: this.stations[this.currentStation].urls
-                };
-                const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+                const station = this.stations[this.currentStation];
+                let encoded;
+                try {
+                    encoded = encodeSharePayload(station.label, station.urls);
+                } catch (e) {
+                    console.error('QR encode failed:', e);
+                    return;
+                }
                 const shareUrl = `${window.location.origin}${window.location.pathname}#import:${encoded}`;
-                
+
                 // Utilisation d'une API QR Code gratuite (type QRServer ou GoQR)
                 const qrApi = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(shareUrl)}&color=000000&bgcolor=FFFFFF`;
                 document.getElementById('qrcode-img').src = qrApi;

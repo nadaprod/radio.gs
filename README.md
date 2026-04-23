@@ -21,7 +21,7 @@ That's it. The app is a single file at `public/index.html` and talks directly to
 - **Playback** drives a hidden SoundCloud iframe. On each scan the app picks a random set, then a random track inside it. When a track finishes, it scans again.
 - **Sharing** is URL-based and server-free:
   - `radio.gs/#<slug>` — open a specific station.
-  - `radio.gs/#import:<base64>` — a share link. The receiver's browser decodes it, adds the station to their local collection, and switches to it. Generate one from the ⚙ menu → **Share**.
+  - `radio.gs/#import:v1:<lz-string>` — a share link. The receiver's browser decompresses it, adds the station to their local collection, and switches to it. Generate one from the ⚙ menu → **Share**. Format details in `SHARING.md`.
 - **Editing** a station: ⚙ → **Edit** shows one URL per line. Save to update. Save an empty list to delete the station (as long as at least one other remains).
 
 ## Install it (PWA)
@@ -39,6 +39,7 @@ The service worker precaches the app shell and falls back to a cached `index.htm
 - Vanilla HTML / CSS / JS — no framework, no bundler.
 - [SoundCloud Widget API](https://developers.soundcloud.com/docs/api/html5-widget) for audio.
 - [three.js](https://threejs.org/) for the bokeh background.
+- [lz-string](https://github.com/pieroxy/lz-string) to compress `#import:` share-link payloads.
 - `api.qrserver.com` for share-link QR codes.
 
 ## Contributing & license
