@@ -256,52 +256,52 @@
 
         .tilt-container {
             perspective: 1200px;
-    width: auto;
-    max-height: 50vh;
-    max-width: 79%;
+            width: auto;
+            max-height: 50vh;
+            max-width: 79%;
             aspect-ratio: 1;
             pointer-events: auto;
         }
 
-.artwork-card {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    background: #111;
-    border-radius: 4px;
-    transform-style: preserve-3d; /* CRUCIAL pour l'effet 3D */
-    box-shadow: 0 30px 60px -12px rgba(0,0,0,0.8);
-    transition: transform 0.1s var(--ease-out-expo);
-}
+        .artwork-card {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: #111;
+            border-radius: 4px;
+            transform-style: preserve-3d; /* CRUCIAL pour l'effet 3D */
+            box-shadow: 0 30px 60px -12px rgba(0,0,0,0.8);
+            transition: transform 0.1s var(--ease-out-expo);
+        }
 
-.permanent-track-title {
-    position: absolute;
-    /* On le place au milieu du parent */
-    left: 50%;
-    bottom: -60px; 
-    
-    /* CORRECTION : On combine le centrage (-50%) ET la profondeur (50px) dans la même ligne */
-    transform: translateX(-50%) translateZ(50px);
-    
-    /* On s'assure que le texte lui-même est centré */
-    text-align: center;
-    width: 100%; /* Largeur augmentée pour éviter les retours à la ligne */
-    
-    font-family: 'Permanent Marker', cursive;
-    font-size: clamp(1.2rem, 4vw, 2rem);
-    color: var(--accent);
-    text-shadow: 0 10px 20px rgba(0,0,0,0.5);
-    opacity: 0;
-    transition: all 0.6s var(--ease-out-expo), color 0.3s ease;
-    text-decoration: none;
-    pointer-events: auto;
-    cursor: pointer;
-}
+        .permanent-track-title {
+            position: absolute;
+            /* On le place au milieu du parent */
+            left: 50%;
+            bottom: -60px; 
+            
+            /* CORRECTION : On combine le centrage (-50%) ET la profondeur (50px) dans la même ligne */
+            transform: translateX(-50%) translateZ(50px);
+            
+            /* On s'assure que le texte lui-même est centré */
+            text-align: center;
+            width: 100%; /* Largeur augmentée pour éviter les retours à la ligne */
+            
+            font-family: 'Permanent Marker', cursive;
+            font-size: clamp(1.2rem, 4vw, 2rem);
+            color: var(--accent);
+            text-shadow: 0 10px 20px rgba(0,0,0,0.5);
+            opacity: 0;
+            transition: all 0.6s var(--ease-out-expo), color 0.3s ease;
+            text-decoration: none;
+            pointer-events: auto;
+            cursor: pointer;
+        }
 
-/* On s'assure que le titre devient visible quand la radio est active */
-.active .permanent-track-title {
-    opacity: 1;
-}
+        /* On s'assure que le titre devient visible quand la radio est active */
+        .active .permanent-track-title {
+            opacity: 1;
+        }
 
         #artwork {
             width: 100%;
@@ -735,788 +735,819 @@
         </section>
     </main>
 
-    <script>
-window.addEventListener('unhandledrejection', function(event) {
-    if (event.reason && event.reason.name === 'AbortError') {
-        event.preventDefault(); // Empêche l'affichage dans la console
+<script>
+    window.addEventListener('unhandledrejection', function(event) {
+        if (event.reason && event.reason.name === 'AbortError') {
+            event.preventDefault(); // Empêche l'affichage dans la console
+        }
+    });
+
+    /** SHARE-LINK FORMAT (see THINKING.md, SHARING.md)
+        *
+        * #import:v1:<lz-string> — payload is LZ-string-compressed TSV:
+        *   line 0 : station label
+        *   line N : "<provider-tag> <path>"
+        *
+        * The provider tag is mandatory so v2 of this app can route to
+        * other sources without a format bump. Add a new provider by
+        * adding an entry to PROVIDERS below.
+        */
+    const PROVIDERS = {
+        s: { prefix: 'https://soundcloud.com/' },
+    };
+
+    function collapseUrl(url) {
+        for (const [tag, { prefix }] of Object.entries(PROVIDERS)) {
+            if (url.startsWith(prefix)) return `${tag} ${url.slice(prefix.length)}`;
+        }
+        throw new Error(`Unsupported URL (no provider tag matches): ${url}`);
     }
-});
 
-        /** SHARE-LINK FORMAT (see THINKING.md, SHARING.md)
-         *
-         * #import:v1:<lz-string> — payload is LZ-string-compressed TSV:
-         *   line 0 : station label
-         *   line N : "<provider-tag> <path>"
-         *
-         * The provider tag is mandatory so v2 of this app can route to
-         * other sources without a format bump. Add a new provider by
-         * adding an entry to PROVIDERS below.
-         */
-        const PROVIDERS = {
-            s: { prefix: 'https://soundcloud.com/' },
-        };
+    function expandUrl(line) {
+        const sep = line.indexOf(' ');
+        if (sep < 1) throw new Error(`Malformed entry: ${line}`);
+        const tag = line.slice(0, sep);
+        const path = line.slice(sep + 1);
+        const provider = PROVIDERS[tag];
+        if (!provider) throw new Error(`Unknown provider tag "${tag}" — this RADIO.GS build doesn't support it yet.`);
+        return provider.prefix + path;
+    }
 
-        function collapseUrl(url) {
-            for (const [tag, { prefix }] of Object.entries(PROVIDERS)) {
-                if (url.startsWith(prefix)) return `${tag} ${url.slice(prefix.length)}`;
-            }
-            throw new Error(`Unsupported URL (no provider tag matches): ${url}`);
+    function encodeSharePayload(label, urls) {
+        const body = [label, ...urls.map(collapseUrl)].join('\n');
+        return 'v1:' + LZString.compressToEncodedURIComponent(body);
+    }
+
+    function decodeSharePayload(body) {
+        const colon = body.indexOf(':');
+        if (colon < 1) throw new Error('Missing version marker.');
+        const version = body.slice(0, colon);
+        const rest = body.slice(colon + 1);
+        if (version !== 'v1') throw new Error(`Unsupported share-link version "${version}".`);
+        const decompressed = LZString.decompressFromEncodedURIComponent(rest);
+        if (!decompressed) throw new Error('Corrupted share payload.');
+        const lines = decompressed.split('\n');
+        if (lines.length < 2) throw new Error('Share payload has no URLs.');
+        return { label: lines[0], urls: lines.slice(1).map(expandUrl) };
+    }
+
+    /** BOKEH SCENE (THREE.JS) **/
+    class BokehScene {
+        constructor() {
+            this.container = document.getElementById('canvas-container');
+            this.scene = new THREE.Scene();
+            this.scene.fog = new THREE.FogExp2(0x000000, 0.002);
+            this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            this.camera.position.z = 60;
+            this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+            this.container.appendChild(this.renderer.domElement);
+
+            this.group = new THREE.Group();
+            this.scene.add(this.group);
+
+            this.mouseX = 0; this.mouseY = 0;
+            this.targetRotationX = 0; this.targetRotationY = 0;
+
+            this.initParticles();
+            window.addEventListener('resize', this.onResize.bind(this));
+            this.animate();
         }
 
-        function expandUrl(line) {
-            const sep = line.indexOf(' ');
-            if (sep < 1) throw new Error(`Malformed entry: ${line}`);
-            const tag = line.slice(0, sep);
-            const path = line.slice(sep + 1);
-            const provider = PROVIDERS[tag];
-            if (!provider) throw new Error(`Unknown provider tag "${tag}" — this RADIO.GS build doesn't support it yet.`);
-            return provider.prefix + path;
+        initParticles() {
+            const geometry = new THREE.BufferGeometry();
+            const vertices = [];
+            for (let i = 0; i < 400; i++) {
+                vertices.push((Math.random() - 0.5) * 200, (Math.random() - 0.5) * 200, (Math.random() - 0.5) * 150);
+            }
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            const material = new THREE.PointsMaterial({
+                color: 0xffffff, size: 1.2, transparent: true, opacity: 0.3,
+                map: this.createCircleTexture(), blending: THREE.AdditiveBlending, depthWrite: false
+            });
+            this.particleSystem = new THREE.Points(geometry, material);
+            this.group.add(this.particleSystem);
         }
 
-        function encodeSharePayload(label, urls) {
-            const body = [label, ...urls.map(collapseUrl)].join('\n');
-            return 'v1:' + LZString.compressToEncodedURIComponent(body);
+        createCircleTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 32; canvas.height = 32;
+            const ctx = canvas.getContext('2d');
+            const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+            grad.addColorStop(0, 'rgba(255,255,255,1)');
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 32, 32);
+            return new THREE.CanvasTexture(canvas);
         }
 
-        function decodeSharePayload(body) {
-            const colon = body.indexOf(':');
-            if (colon < 1) throw new Error('Missing version marker.');
-            const version = body.slice(0, colon);
-            const rest = body.slice(colon + 1);
-            if (version !== 'v1') throw new Error(`Unsupported share-link version "${version}".`);
-            const decompressed = LZString.decompressFromEncodedURIComponent(rest);
-            if (!decompressed) throw new Error('Corrupted share payload.');
-            const lines = decompressed.split('\n');
-            if (lines.length < 2) throw new Error('Share payload has no URLs.');
-            return { label: lines[0], urls: lines.slice(1).map(expandUrl) };
+        setMode(mode) {
+            if (mode === 'tuning') this.particleSystem.material.opacity = 0.8;
+            else if (mode === 'playing') this.particleSystem.material.opacity = 0.4;
+            else this.particleSystem.material.opacity = 0.2;
         }
 
-        /** BOKEH SCENE (THREE.JS) **/
-        class BokehScene {
-            constructor() {
-                this.container = document.getElementById('canvas-container');
-                this.scene = new THREE.Scene();
-                this.scene.fog = new THREE.FogExp2(0x000000, 0.002);
-                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-                this.camera.position.z = 60;
-                this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
-                this.renderer.setSize(window.innerWidth, window.innerHeight);
-                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-                this.container.appendChild(this.renderer.domElement);
-
-                this.group = new THREE.Group();
-                this.scene.add(this.group);
-
-                this.mouseX = 0; this.mouseY = 0;
-                this.targetRotationX = 0; this.targetRotationY = 0;
-
-                this.initParticles();
-                window.addEventListener('resize', this.onResize.bind(this));
-                this.animate();
-            }
-
-            initParticles() {
-                const geometry = new THREE.BufferGeometry();
-                const vertices = [];
-                for (let i = 0; i < 400; i++) {
-                    vertices.push((Math.random() - 0.5) * 200, (Math.random() - 0.5) * 200, (Math.random() - 0.5) * 150);
-                }
-                geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-                const material = new THREE.PointsMaterial({
-                    color: 0xffffff, size: 1.2, transparent: true, opacity: 0.3,
-                    map: this.createCircleTexture(), blending: THREE.AdditiveBlending, depthWrite: false
-                });
-                this.particleSystem = new THREE.Points(geometry, material);
-                this.group.add(this.particleSystem);
-            }
-
-            createCircleTexture() {
-                const canvas = document.createElement('canvas');
-                canvas.width = 32; canvas.height = 32;
-                const ctx = canvas.getContext('2d');
-                const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
-                grad.addColorStop(0, 'rgba(255,255,255,1)');
-                grad.addColorStop(1, 'rgba(0,0,0,0)');
-                ctx.fillStyle = grad;
-                ctx.fillRect(0, 0, 32, 32);
-                return new THREE.CanvasTexture(canvas);
-            }
-
-            setMode(mode) {
-                if (mode === 'tuning') this.particleSystem.material.opacity = 0.8;
-                else if (mode === 'playing') this.particleSystem.material.opacity = 0.4;
-                else this.particleSystem.material.opacity = 0.2;
-            }
-
-            onResize() {
-                this.camera.aspect = window.innerWidth / window.innerHeight;
-                this.camera.updateProjectionMatrix();
-                this.renderer.setSize(window.innerWidth, window.innerHeight);
-            }
-
-            animate() {
-                requestAnimationFrame(this.animate.bind(this));
-                this.particleSystem.rotation.z += 0.0003;
-                this.group.rotation.x += (this.mouseY * 0.1 - this.group.rotation.x) * 0.05;
-                this.group.rotation.y += (this.mouseX * 0.1 - this.group.rotation.y) * 0.05;
-                this.renderer.render(this.scene, this.camera);
-            }
+        onResize() {
+            this.camera.aspect = window.innerWidth / window.innerHeight;
+            this.camera.updateProjectionMatrix();
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        /** ARTWORK TILT **/
+        animate() {
+            requestAnimationFrame(this.animate.bind(this));
+            this.particleSystem.rotation.z += 0.0003;
+            this.group.rotation.x += (this.mouseY * 0.1 - this.group.rotation.x) * 0.05;
+            this.group.rotation.y += (this.mouseX * 0.1 - this.group.rotation.y) * 0.05;
+            this.renderer.render(this.scene, this.camera);
+        }
+    }
 
-        class ArtworkTilt {
-            constructor() {
-                this.card = document.getElementById('artwork-card');
-                this.container = document.getElementById('tilt-container');
-                this.glare = document.querySelector('.glare');
-                this.idleTimer = null; // Timer pour détecter l'inactivité
+    /** ARTWORK TILT **/
 
-                document.addEventListener('mousemove', (e) => {
-                    const nx = (e.clientX / window.innerWidth) * 2 - 1;
-                    const ny = (e.clientY / window.innerHeight) * 2 - 1;
-                    if(app.bokeh) { app.bokeh.mouseX = nx; app.bokeh.mouseY = ny; }
-                    
-                    this.handleMove(e);
-                });
+    class ArtworkTilt {
+        constructor() {
+            this.card = document.getElementById('artwork-card');
+            this.container = document.getElementById('tilt-container');
+            this.glare = document.querySelector('.glare');
+            this.idleTimer = null; // Timer pour détecter l'inactivité
 
-                document.addEventListener('mouseleave', () => this.reset());
-            }
+            document.addEventListener('mousemove', (e) => {
+                const nx = (e.clientX / window.innerWidth) * 2 - 1;
+                const ny = (e.clientY / window.innerHeight) * 2 - 1;
+                if(app.bokeh) { app.bokeh.mouseX = nx; app.bokeh.mouseY = ny; }
+                
+                this.handleMove(e);
+            });
 
-            handleMove(e) {
-                if (!this.container) return;
-
-                // 1. Annuler le timer précédent dès que la souris bouge
-                clearTimeout(this.idleTimer);
-
-                const bounds = this.container.getBoundingClientRect();
-                const centerX = bounds.left + bounds.width / 2;
-                const centerY = bounds.top + bounds.height / 2;
-                const rotX = -(e.clientY - centerY) / 20;
-                const rotY = (e.clientX - centerX) / 20;
-
-                // Appliquer l'inclinaison
-                this.card.style.transition = "transform 0.1s var(--ease-out-expo), opacity 0.8s ease"; // Transition courte pour le suivi
-                this.card.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg) scale(1.05)`;
-                this.glare.style.opacity = '1';
-
-                // 2. Lancer le compte à rebours de 2 secondes (2000ms)
-                this.idleTimer = setTimeout(() => {
-                    this.reset();
-                }, 400);
-            }
-
-            reset() {
-                // Appliquer une transition plus lente et fluide pour le retour au centre
-                this.card.style.transition = "transform 2.3s cubic-bezier(0.25, 1, 0.5, 1)"; 
-                this.card.style.transform = `rotateX(0deg) rotateY(0deg) scale(1)`;
-                this.glare.style.opacity = '0';
-            }
+            document.addEventListener('mouseleave', () => this.reset());
         }
 
-        /** AUDIO APP LOGIC **/
-        class AudioApp {
-            constructor() {
+        handleMove(e) {
+            if (!this.container) return;
 
-                const defaultStations = {
-                    "clh": { label: "CLH", urls:[
-                        "https://soundcloud.com/clhmusic/sets/cynicism-kills",
-                        "https://soundcloud.com/clhmusic/sets/plein-chomage",
-                        "https://soundcloud.com/clhmusic/sets/freedoms-classroom-2",
-                        "https://soundcloud.com/clhmusic/sets/pleno-desemprego",
-                        "https://soundcloud.com/clhmusic/sets/deviens-toi-meme",
-                        "https://soundcloud.com/clhmusic/sets/happy2026",
-                        "https://soundcloud.com/clhmusic/sets/discipline",
-                        "https://soundcloud.com/clhmusic/sets/we-are-fuck-the-norm",
-                        "https://soundcloud.com/clhmusic/sets/lazy-for-creation",
-                        "https://soundcloud.com/clhmusic/sets/cynicism-kills",
-                        "https://soundcloud.com/clhmusic/sets/plein-chomage",
-                        "https://soundcloud.com/clhmusic/sets/freedoms-classroom-2",
-                        "https://soundcloud.com/clhmusic/sets/pleno-desemprego",
-                        "https://soundcloud.com/clhmusic/sets/deviens-toi-meme",
-                        "https://soundcloud.com/clhmusic/sets/paul-lafargue-le-droit-a-la-paresse-teaser-lien-librement-accesible-dans-la-description",
-                        "https://soundcloud.com/clhmusic/sets/still-i-show-up",
-                        "https://soundcloud.com/clhmusic/sets/6-7-meme",
-                        "https://soundcloud.com/clhmusic/sets/we-may-have-just-one-life-reprise",
-                        "https://soundcloud.com/clhmusic/sets/happy2026",
-                        "https://soundcloud.com/clhmusic/sets/discipline",
-                        "https://soundcloud.com/clhmusic/sets/lazy-for-creation",
-                        "https://soundcloud.com/clhmusic/sets/saine-paresse-reprise",
-                        "https://soundcloud.com/clhmusic/sets/ux-or-die-trying-part-2",
-                        "https://soundcloud.com/clhmusic/sets/ux-or-die-trying"
-                    ]},
-                    "electro": { label: "zemix Electro", urls:[
-                        "https://soundcloud.com/clhmusic/sets/r-d-j45",
-                        "https://soundcloud.com/clhmusic/sets/clh-do-the-funk"
-                    ]},
-                    "funk": { label: "zemix Funk", urls:[
-                        "https://soundcloud.com/clhmusic/sets/i-like-it-funk-sometimes"
-                    ]},
-                    "rock": { label: "zemix Rock", urls:[
-                        "https://soundcloud.com/clhmusic/sets/rock-francais",
-                        "https://soundcloud.com/clhmusic/sets/punk-en",
-                        "https://soundcloud.com/clhmusic/sets/punk-fr",
-                        "https://soundcloud.com/clhmusic/sets/sounds-from-rikikikiki",
-                        "https://soundcloud.com/clhmusic/sets/rock-francais",
-                        "https://soundcloud.com/clhmusic/sets/i-like-it-punk-sometimes",
-                        "https://soundcloud.com/clhmusic/sets/i-like-it-raw-sometimes",
-                        "https://soundcloud.com/pennywisdom/sets/never-gonna-die-3",
-                        "https://soundcloud.com/pennywisdom/sets/all-or-nothing-23"
-                    ]},
-                    "hip-hop": { label: "zemix Hip-Hop", urls:[
-                        "https://soundcloud.com/clhmusic/sets/lourd-ep",
-                        "https://soundcloud.com/clhmusic/sets/hip-hop",
-                        "https://soundcloud.com/clhmusic/sets/hip-hop-fr",
-                        "https://soundcloud.com/clhmusic/sets/hip-hop-en",
-                        "https://soundcloud.com/clhmusic/sets/lourd-ep",
-                        "https://soundcloud.com/clhmusic/sets/lourd-ep",
-                        "https://soundcloud.com/clhmusic/sets/lourd-ep",
-                        "https://soundcloud.com/clhmusic/sets/lourd-ep",
-                        "https://soundcloud.com/clhmusic/sets/lourd-ep",
-                        "https://soundcloud.com/clhmusic/sets/lourd-ep",
-                        "https://soundcloud.com/clhmusic/sets/lourd-ep",
-                        "https://soundcloud.com/clhmusic/sets/drum-d-draft-a-must-to-listen",
-                        "https://soundcloud.com/kenyarkana/sets/etat-durgence-2",
-                        "https://soundcloud.com/kenyarkana/sets/tout-tourne-autour-du-soleil",
-                        "https://soundcloud.com/clhmusic/sets/lourd-ep"
-                    ]},
-                    "drumd": { label: "DRUMD", urls:[
-                        "https://soundcloud.com/clhmusic/sets/drum-d-draft-a-must-to-listen"
-                    ]},
-                    "quessada": { label: "Quessada", urls:[
-                        "https://soundcloud.com/quessada/sets/super-connard",
-                        "https://soundcloud.com/quessada/sets/super-sympa",
-                        "https://soundcloud.com/quessada/sets/jai-rate-ma-vie",
-                        "https://soundcloud.com/quessada/sets/la-fin-du-monde",
-                        "https://soundcloud.com/quessada/sets/super-connard",
-                        "https://soundcloud.com/quessada/sets/super-sympa",
-                        "https://soundcloud.com/quessada/sets/jai-rate-ma-vie",
-                        "https://soundcloud.com/quessada/sets/la-fin-du-monde"
-                    ]},
-                    "kenyarkana": { label: "Keny Arkana", urls:[
-                        "https://soundcloud.com/kenyarkana/sets/avant-lexode",
-                        "https://soundcloud.com/kenyarkana/sets/tout-tourne-autour-du-soleil",
-                        "https://soundcloud.com/kenyarkana/sets/lesquisse-3",
-                        "https://soundcloud.com/kenyarkana/sets/etat-durgence-2",
-                        "https://soundcloud.com/kenyarkana/sets/entre-ciment-et-belle-etoile",
-                        "https://soundcloud.com/kenyarkana/sets/desobeissance",
-                        "https://soundcloud.com/kenyarkana/sets/lesquisse-1",
-                        "https://soundcloud.com/kenyarkana/sets/lesquisse-2"
-                    ]},
-                    "bojuju": { label: "Julien Ribot", urls:[
-                        "https://soundcloud.com/julienribot/sets/do-you-feel-9-2",
-                        "https://soundcloud.com/julienribot/sets/songs-for-coco-1"
-                    ]}
-                };
+            // 1. Annuler le timer précédent dès que la souris bouge
+            clearTimeout(this.idleTimer);
 
-                const saved = localStorage.getItem('radio_gs_data');
-                this.stations = saved ? JSON.parse(saved) : defaultStations;
-                
-                this.checkImport();
+            const bounds = this.container.getBoundingClientRect();
+            const centerX = bounds.left + bounds.width / 2;
+            const centerY = bounds.top + bounds.height / 2;
+            const rotX = -(e.clientY - centerY) / 20;
+            const rotY = (e.clientX - centerX) / 20;
 
-                const hash = decodeURIComponent(window.location.hash.substring(1));
-                const firstStation = Object.keys(this.stations)[0];
-                this.currentStation = this.stations[hash] ? hash : firstStation;
-                
-                this.playlists = this.stations[this.currentStation].urls;
+            // Appliquer l'inclinaison
+            this.card.style.transition = "transform 0.1s var(--ease-out-expo), opacity 0.8s ease"; // Transition courte pour le suivi
+            this.card.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg) scale(1.05)`;
+            this.glare.style.opacity = '1';
 
-                this.widget = null;
-                this.isPlaying = false;
-                this.isTuning = false;
-                
-                this.ui = {
-                    landing: document.getElementById('landing'),
-                    player: document.getElementById('player-ui'),
-                    permTitle: document.getElementById('permanent-title'),
-                    artist: document.getElementById('artist-name'),
-                    art: document.getElementById('artwork'),
-                    playIcon: document.getElementById('icon-play'),
-                    pauseIcon: document.getElementById('icon-pause'),
-                    progBar: document.getElementById('progress-bar'),
-                    currTime: document.getElementById('curr-time'),
-                    totalTime: document.getElementById('total-time'),
-                    status: document.getElementById('status-text'),
-                    indicator: document.getElementById('status-indicator'),
-                    freq: document.getElementById('freq-id'),
-                    ambient: document.getElementById('ambient-bg'),
-                    history: document.getElementById('modal-history-list'),
-                    editorModal: document.getElementById('system-modal'),
-                    editorArea: document.getElementById('playlist-data')
-                };
-
-                document.getElementById('progress-area').addEventListener('click', (e) => {
-                    if(!this.widget) return;
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const p = (e.clientX - rect.left) / rect.width;
-                    this.widget.getDuration(d => this.widget.seekTo(d * p));
-                });
-            }
-
-            init(slug) {
-                const station = this.stations[slug];
-                if (!station) return;
-
-                this.currentStation = slug;
-                this.playlists = station.urls;
-                window.location.hash = slug;
-
-                // Met à jour le logo dynamiquement
-                document.querySelector('.logo .marker-text').innerText = station.label.toUpperCase();
-
-                // Singleton pour les scènes (évite les doublons)
-                if (!this.bokeh) this.bokeh = new BokehScene();
-                if (!this.tilt) this.tilt = new ArtworkTilt();
-
-                this.ui.landing.style.transform = 'translateY(-100%)';
-                setTimeout(() => {
-                    this.ui.player.style.opacity = '1';
-                    this.ui.player.style.pointerEvents = 'auto';
-                    document.querySelectorAll('.reveal-text').forEach(el => el.classList.add('active'));
-                }, 800);
-                
-                this.scan();
-            }
-
-            renderStationSelector() {
-                const container = document.getElementById('station-selector');
-                const searchInput = document.getElementById('station-search');
-                const slugs = Object.keys(this.stations);
-                
-                container.innerHTML = '';
-
-                // Affiche la recherche seulement si > 3 stations
-                if (slugs.length > 3) {
-                    searchInput.classList.remove('hidden');
-                }
-
-                const sortedSlugs = slugs.sort((a, b) => 
-                    this.stations[a].label.localeCompare(this.stations[b].label)
-                );
-
-                sortedSlugs.forEach(slug => {
-                    const station = this.stations[slug];
-                    const btn = document.createElement('button');
-                    btn.className = 'btn-start';
-                    btn.setAttribute('data-label', station.label.toLowerCase()); // Pour le filtrage
-                    
-                    if (window.location.hash === `#${slug}`) btn.style.borderColor = 'var(--accent)';
-
-                    btn.innerHTML = `<span>${station.label.toUpperCase()}</span>`;
-                    btn.onclick = () => { window.location.hash = slug; this.init(slug); };
-                    container.appendChild(btn);
-                });
-
-                // Logique de recherche en temps réel
-                searchInput.oninput = (e) => {
-                    const val = e.target.value.toLowerCase();
-                    const buttons = container.querySelectorAll('.btn-start');
-                    
-                    buttons.forEach(btn => {
-                        const match = btn.getAttribute('data-label').includes(val);
-                        btn.style.display = match ? 'flex' : 'none';
-                        btn.style.opacity = val.length > 0 ? (match ? '1' : '0') : '1';
-                    });
-                };
-            }
-
-            generateShareLink() {
-                const station = this.stations[this.currentStation];
-                let encoded;
-                try {
-                    encoded = encodeSharePayload(station.label, station.urls);
-                } catch (e) {
-                    alert(`Impossible de générer le lien : ${e.message}`);
-                    return;
-                }
-                const shareUrl = `${window.location.origin}${window.location.pathname}#import:${encoded}`;
-
-                // On copie dans le presse-papier
-                navigator.clipboard.writeText(shareUrl).then(() => {
-                    alert("Lien de partage copié ! (Zéro-Server)");
-                });
-            }
-
-            // Dans ta classe AudioApp
-            goBackToLanding() {
-                window.location.hash = "";
-                this.ui.player.style.opacity = '0';
-                this.ui.player.style.pointerEvents = 'none';
-                this.ui.landing.style.transform = 'translateY(0)';
-                if(this.widget) this.widget.pause();
-            }
-
-            checkImport() {
-                const hash = window.location.hash;
-                if (!hash.startsWith('#import:')) return;
-                try {
-                    const { label, urls } = decodeSharePayload(hash.slice('#import:'.length));
-
-                    const baseSlug = this.slugify(label);
-                    let targetSlug = baseSlug;
-                    let targetLabel = label;
-                    const existing = this.stations[baseSlug];
-
-                    if (existing) {
-                        const sameUrls = JSON.stringify(existing.urls) === JSON.stringify(urls);
-                        if (sameUrls) {
-                            // Already imported, just switch to it.
-                            window.location.hash = baseSlug;
-                            return;
-                        }
-                        const overwrite = confirm(
-                            `Station "${existing.label}" already exists locally with different tracks.\n\n` +
-                            `OK = overwrite with shared version\nCancel = keep both (import as a copy)`
-                        );
-                        if (!overwrite) {
-                            let n = 2;
-                            while (this.stations[`${baseSlug}-${n}`]) n++;
-                            targetSlug = `${baseSlug}-${n}`;
-                            targetLabel = `${label} (${n})`;
-                        }
-                    }
-
-                    this.stations[targetSlug] = { label: targetLabel, urls };
-                    localStorage.setItem('radio_gs_data', JSON.stringify(this.stations));
-                    window.location.hash = targetSlug;
-                    alert(`Station "${targetLabel}" importée avec succès !`);
-                } catch (e) {
-                    console.error("Erreur d'importation :", e);
-                    alert(`Erreur d'importation : ${e.message}`);
-                }
-            }
-
-            scan() {
-                if(this.isTuning) return;
-                this.isTuning = true;
-                this.updateStatus('SCANNING', 'var(--accent)');
-                this.bokeh.setMode('tuning');
-                this.ui.art.style.opacity = '0.2';
-                this.ui.art.style.filter = 'grayscale(1) blur(10px)';
-                
-                const url = this.playlists[Math.floor(Math.random() * this.playlists.length)];
-                this.ui.freq.innerText = (Math.random() * 100 + 88).toFixed(1);
-
-                if(!this.widget) {
-                    const container = document.getElementById('sc-engine-container');
-                    container.innerHTML = `<iframe id="sc-widget" src="https://w.soundcloud.com/player/?url=${url}&auto_play=false&show_artwork=true&visual=false&hide_related=true&show_comments=false&show_user=false&show_reposts=false" width="100%" height="166" scrolling="no" frameborder="no" allow="autoplay; encrypted-media"></iframe>`;
-
-                    this.widget = SC.Widget(document.getElementById('sc-widget'));
-                    this.widget.bind(SC.Widget.Events.READY, () => {
-                        this.widget.bind(SC.Widget.Events.PLAY, () => this.onPlay());
-                        this.widget.bind(SC.Widget.Events.PAUSE, () => this.onPause());
-                        this.widget.bind(SC.Widget.Events.FINISH, () => this.scan());
-                        this.widget.bind(SC.Widget.Events.PLAY_PROGRESS, (e) => this.onProgress(e));
-                        this.playRandom();
-                    });
-                } else {
-                    this.widget.load(url, { auto_play: false, callback: () => this.playRandom() });
-                }
-            }
-
-            toggleSystemMenu() {
-                const modal = document.getElementById('system-modal');
-                const isOpening = modal.classList.contains('hidden');
-                
-                modal.classList.toggle('hidden');
-
-                if (isOpening) {
-                    // 1. On injecte les URLs de la station actuelle dans le textarea
-                    // On utilise .join('\n') pour avoir une URL par ligne, bien propre.
-                    this.ui.editorArea.value = this.playlists.join('\n');
-
-                    // 2. On s'assure d'être sur l'onglet EDIT par défaut
-                    this.switchTab('edit');
-
-                    // 3. On synchronise les logs historiques
-                    const modalList = document.getElementById('modal-history-list');
-                    if (modalList) modalList.innerHTML = this.ui.history.innerHTML;
-                }
-            }
-
-            switchTab(tabId) {
-                // Boutons
-                document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
-                // Contenus
-                document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
-                document.getElementById(`tab-${tabId}`).classList.remove('hidden');
-
-                if (tabId === 'share') this.updateQRCode();
-            }
-
-            updateQRCode() {
-                const station = this.stations[this.currentStation];
-                let encoded;
-                try {
-                    encoded = encodeSharePayload(station.label, station.urls);
-                } catch (e) {
-                    console.error('QR encode failed:', e);
-                    return;
-                }
-                const shareUrl = `${window.location.origin}${window.location.pathname}#import:${encoded}`;
-
-                // Utilisation d'une API QR Code gratuite (type QRServer ou GoQR)
-                const qrApi = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(shareUrl)}&color=000000&bgcolor=FFFFFF`;
-                document.getElementById('qrcode-img').src = qrApi;
-            }
-
-            toggleEditor() {
-                const isHidden = this.ui.editorModal.classList.contains('hidden');
-                if (isHidden) {
-                    // On affiche les playlists sous forme de liste propre (une par ligne)
-                    this.ui.editorArea.value = this.playlists.join('\n');
-                    this.ui.editorModal.classList.remove('hidden');
-                } else {
-                    this.ui.editorModal.classList.add('hidden');
-                }
-            }
-
-            slugify(text) {
-                return text
-                    .toString()
-                    .toLowerCase()
-                    .normalize('NFD') // Sépare les accents des lettres
-                    .replace(/[\u0300-\u036f]/g, '') // Supprime les accents
-                    .replace(/\s+/g, '-') // Remplace les espaces par des tirets
-                    .replace(/[^\w\-]+/g, '') // Supprime tout ce qui n'est pas mot ou tiret
-                    .replace(/\-\-+/g, '-') // Évite les doubles tirets
-                    .replace(/^-+/, '') // Supprime les tirets au début
-                    .replace(/-+$/, ''); // Supprime les tirets à la fin
-            }
-
-            createNewStation() {
-                const rawName = prompt("NOM DE LA RADIO :");
-                if (!rawName) return;
-
-                const slug = this.slugify(rawName);
-                
-                if (slug.length === 0) {
-                    alert("Nom invalide.");
-                    return;
-                }
-
-                if (this.stations[slug]) {
-                    alert("Cette station (slug) existe déjà.");
-                    return;
-                }
-
-                // On stocke un objet plutôt qu'un simple tableau pour garder le nom propre
-                this.stations[slug] = {
-                    label: rawName.trim(),
-                    urls: ["https://soundcloud.com/clhmusic/sets/r-d-j45"]
-                };
-
-                localStorage.setItem('radio_gs_data', JSON.stringify(this.stations));
-                this.renderStationSelector();
-            }
-
-            savePlaylists() {
-                const lines = this.ui.editorArea.value.split('\n')
-                    .map(line => line.trim())
-                    .filter(line => line.length > 5);
-
-                const STORAGE_KEY = 'radio_gs_data'; // Utilise une constante unique
-
-                // CAS 1 : SUPPRESSION
-                if (lines.length === 0) {
-                    const stationKeys = Object.keys(this.stations);
-                    
-                    if (stationKeys.length > 1) {
-                        if (confirm(`DELETE_STATION: ${this.stations[this.currentStation].label}?`)) {
-                            delete this.stations[this.currentStation];
-                            localStorage.setItem(STORAGE_KEY, JSON.stringify(this.stations));
-                            
-                            // Au lieu de reload, on nettoie et on retourne au landing
-                            window.location.hash = ""; 
-                            location.reload(); // Ici le reload est "safe" car on a vidé le hash
-                            return;
-                        }
-                    } else {
-                        alert("ACTION_DENIED: Minimum 1 station required.");
-                        return;
-                    }
-                }
-                
-                // CAS 2 : MISE À JOUR
-                if (lines.length > 0) {
-                    // On met à jour l'objet global
-                    this.stations[this.currentStation].urls = lines;
-                    // On met à jour la référence active pour le prochain scan()
-                    this.playlists = lines;
-                    
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.stations));
-                    
-                    this.ui.editorModal.classList.add('hidden');
-                    this.updateStatus(`STATION ${this.currentStation.toUpperCase()} UPDATED`, 'var(--accent)');
-                    
-                    // Petit feedback visuel avant de relancer
-                    setTimeout(() => this.scan(), 500);
-                }
-            }
-
-            playRandom() {
-                this.widget.getSounds(s => {
-                    if(!s || s.length === 0) return this.scan();
-                    
-                    // On choisit un morceau au hasard
-                    const randomIndex = Math.floor(Math.random() * s.length);
-                    this.widget.skip(randomIndex);
-
-                    // On attend un court instant que le widget soit prêt pour le nouveau morceau
-                    setTimeout(() => { 
-                        this.widget.play(); 
-                        this.isTuning = false; 
-                    }, 1200); // Augmenter légèrement à 1200ms pour laisser le buffer se créer
-                });
-            }
-
-            onPlay() {
-                this.isPlaying = true;
-                this.ui.playIcon.classList.add('hidden');
-                this.ui.pauseIcon.classList.remove('hidden');
-                this.updateStatus('LIVE', 'var(--accent)');
-                this.bokeh.setMode('playing');
-                this.ui.art.style.opacity = '1';
-                this.ui.art.style.filter = 'grayscale(0) blur(0)';
-                this.widget.getCurrentSound(s => this.updateTrack(s));
-            }
-
-            onPause() {
-                this.isPlaying = false;
-                this.ui.playIcon.classList.remove('hidden');
-                this.ui.pauseIcon.classList.add('hidden');
-                this.updateStatus('PAUSED', '#555');
-            }
-
-            onProgress(e) {
-                this.ui.progBar.style.width = (e.relativePosition * 100) + '%';
-                this.ui.currTime.innerText = this.formatTime(e.currentPosition);
-            }
-
-            updateTrack(s) {
-                if(!s) return;
-                this.ui.permTitle.innerText = s.title.toUpperCase();
-                this.ui.permTitle.href = s.permalink_url;
-                this.ui.artist.innerText = s.user.username;
-                this.ui.artist.href = s.permalink_url;
-                this.ui.totalTime.innerText = this.formatTime(s.duration);
-                
-                let img = s.artwork_url || s.user.avatar_url;
-                if(img) {
-                    const hd = img.replace('large', 't500x500');
-                    this.ui.art.src = hd;
-                    this.ui.ambient.style.backgroundImage = `url(${hd})`;
-                    this.ui.ambient.style.opacity = '1';
-                    this.extractColor(hd);
-                }
-                this.logHistory(s);
-            }
-
-            extractColor(url) {
-                const img = new Image();
-                img.crossOrigin = "Anonymous";
-                const fallback = () => document.documentElement.style.setProperty('--accent', '#D4FF00');
-                img.onerror = fallback;
-                img.onload = () => {
-                    try {
-                        const canvas = document.createElement('canvas');
-                        const ctx = canvas.getContext('2d');
-                        canvas.width = 1; canvas.height = 1;
-                        ctx.drawImage(img, 0, 0, 1, 1);
-                        const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-                        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-                        const color = brightness < 40 ? '#D4FF00' : `rgb(${r},${g},${b})`;
-                        document.documentElement.style.setProperty('--accent', color);
-                    } catch (e) {
-                        // Canvas read tainted — SoundCloud's CDN doesn't always send CORS headers.
-                        fallback();
-                    }
-                };
-                img.src = url;
-            }
-
-            logHistory(s) {
-                if (!s || !this.ui.history) return;
-                // Dedupe consecutive repeats — pause/resume or seek can refire PLAY.
-                if (this._lastLoggedId === s.id) return;
-                this._lastLoggedId = s.id;
-
-                const item = document.createElement('div');
-                item.className = 'history-item';
-                item.innerHTML = `
-                    <a href="${s.permalink_url}" target="_blank" class="history-link">${s.title.toUpperCase()}</a>
-                    <div style="font-size:9px; color:#555">${s.user.username}</div>
-                `;
-                this.ui.history.prepend(item);
-
-                // Cap list length so long sessions don't grow unbounded.
-                while (this.ui.history.children.length > 50) {
-                    this.ui.history.lastElementChild.remove();
-                }
-            }
-
-            updateStatus(text, color) {
-                this.ui.status.innerText = text;
-                this.ui.status.style.color = color;
-                this.ui.indicator.style.background = color;
-            }
-
-            formatTime(ms) {
-                const m = Math.floor(ms/60000);
-                const s = Math.floor((ms%60000)/1000);
-                return `${m}:${s < 10 ? '0' : ''}${s}`;
-            }
-
-            togglePlay() { this.widget.toggle(); }
+            // 2. Lancer le compte à rebours de 2 secondes (2000ms)
+            this.idleTimer = setTimeout(() => {
+                this.reset();
+            }, 400);
         }
 
-        const app = new AudioApp();
-        app.renderStationSelector();
-
-        const initialHash = decodeURIComponent(window.location.hash.substring(1));
-        if (initialHash && app.stations[initialHash]) {
-            app.init(initialHash);
+        reset() {
+            // Appliquer une transition plus lente et fluide pour le retour au centre
+            this.card.style.transition = "transform 2.3s cubic-bezier(0.25, 1, 0.5, 1)"; 
+            this.card.style.transform = `rotateX(0deg) rotateY(0deg) scale(1)`;
+            this.glare.style.opacity = '0';
         }
+    }
 
-        // --- PWA: service worker registration + update toast ---
-        if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js').then((reg) => {
-                    // When a new SW is installed while the page is open, notify.
-                    reg.addEventListener('updatefound', () => {
-                        const incoming = reg.installing;
-                        if (!incoming) return;
-                        incoming.addEventListener('statechange', () => {
-                            if (incoming.state === 'installed' && navigator.serviceWorker.controller) {
-                                showUpdateToast(incoming);
-                            }
-                        });
-                    });
-                }).catch((err) => console.warn('SW registration failed:', err));
+    /** AUDIO APP LOGIC **/
+    class AudioApp {
+        constructor() {
 
-                // Reload once the new SW has taken control.
-                let reloading = false;
-                navigator.serviceWorker.addEventListener('controllerchange', () => {
-                    if (reloading) return;
-                    reloading = true;
-                    location.reload();
-                });
+            const defaultStations = {
+                "clh": { label: "CLH", urls:[
+                    "https://soundcloud.com/clhmusic/sets/cynicism-kills",
+                    "https://soundcloud.com/clhmusic/sets/plein-chomage",
+                    "https://soundcloud.com/clhmusic/sets/freedoms-classroom-2",
+                    "https://soundcloud.com/clhmusic/sets/pleno-desemprego",
+                    "https://soundcloud.com/clhmusic/sets/deviens-toi-meme",
+                    "https://soundcloud.com/clhmusic/sets/happy2026",
+                    "https://soundcloud.com/clhmusic/sets/discipline",
+                    "https://soundcloud.com/clhmusic/sets/we-are-fuck-the-norm",
+                    "https://soundcloud.com/clhmusic/sets/lazy-for-creation",
+                    "https://soundcloud.com/clhmusic/sets/cynicism-kills",
+                    "https://soundcloud.com/clhmusic/sets/plein-chomage",
+                    "https://soundcloud.com/clhmusic/sets/freedoms-classroom-2",
+                    "https://soundcloud.com/clhmusic/sets/pleno-desemprego",
+                    "https://soundcloud.com/clhmusic/sets/deviens-toi-meme",
+                    "https://soundcloud.com/clhmusic/sets/paul-lafargue-le-droit-a-la-paresse-teaser-lien-librement-accesible-dans-la-description",
+                    "https://soundcloud.com/clhmusic/sets/still-i-show-up",
+                    "https://soundcloud.com/clhmusic/sets/6-7-meme",
+                    "https://soundcloud.com/clhmusic/sets/we-may-have-just-one-life-reprise",
+                    "https://soundcloud.com/clhmusic/sets/happy2026",
+                    "https://soundcloud.com/clhmusic/sets/discipline",
+                    "https://soundcloud.com/clhmusic/sets/lazy-for-creation",
+                    "https://soundcloud.com/clhmusic/sets/saine-paresse-reprise",
+                    "https://soundcloud.com/clhmusic/sets/ux-or-die-trying-part-2",
+                    "https://soundcloud.com/clhmusic/sets/ux-or-die-trying"
+                ]},
+                "electro": { label: "zemix Electro", urls:[
+                    "https://soundcloud.com/clhmusic/sets/r-d-j45",
+                    "https://soundcloud.com/clhmusic/sets/clh-do-the-funk"
+                ]},
+                "freqs": { label: "FREQS", urls:[
+                    "https://soundcloud.com/clhmusic/sets/drum-d-draft-a-must-to-listen",
+                    "https://soundcloud.com/clhmusic/sets/punk-fr-1",
+                    "https://soundcloud.com/clhmusic/sets/1000s",
+                    "https://soundcloud.com/clhmusic/sets/punk-en",
+                    "https://soundcloud.com/clhmusic/sets/dance",
+                    "https://soundcloud.com/clhmusic/sets/hip-hop",
+                    "https://soundcloud.com/clhmusic/sets/elektroenikae",
+                    "https://soundcloud.com/clhmusic/sets/punk-fr",
+                    "https://soundcloud.com/clhmusic/sets/punk-en-2",
+                    "https://soundcloud.com/clhmusic/sets/punk-en-1",
+                    "https://soundcloud.com/clhmusic/sets/hip-hop-fr",
+                    "https://soundcloud.com/clhmusic/sets/r-d-j45",
+                    "https://soundcloud.com/clhmusic/sets/sounds-from-rikikikiki",
+                    "https://soundcloud.com/clhmusic/sets/hip-hop-en",
+                    "https://soundcloud.com/clhmusic/sets/playground",
+                    "https://soundcloud.com/clhmusic/sets/guitar",
+                    "https://soundcloud.com/clhmusic/sets/tignasses-et-billevesees",
+                    "https://soundcloud.com/clhmusic/sets/france",
+                    "https://soundcloud.com/clhmusic/sets/clh-one-shots",
+                    "https://soundcloud.com/clhmusic/sets/i-like-it-rastafari-sometimes",
+                    "https://soundcloud.com/clhmusic/sets/i-like-it-funk-sometimes",
+                    "https://soundcloud.com/clhmusic/sets/i-like-it-punk-sometimes",
+                    "https://soundcloud.com/clhmusic/sets/i-like-it-raw-sometimes",
+                    "https://soundcloud.com/clhmusic/sets/clh-one-shots",
+                    "https://soundcloud.com/clhmusic/sets/1000s",
+                    "https://soundcloud.com/clhmusic/sets/clh-mantras",
+                    "https://soundcloud.com/clhmusic/sets/clh-one-shots",
+                    "https://soundcloud.com/clhmusic/sets/dance"
+
+                ]},
+                "funk": { label: "zemix Funk", urls:[
+                    "https://soundcloud.com/clhmusic/sets/i-like-it-funk-sometimes"
+                ]},
+                "rock": { label: "zemix Rock", urls:[
+                    "https://soundcloud.com/clhmusic/sets/rock-francais",
+                    "https://soundcloud.com/clhmusic/sets/punk-en",
+                    "https://soundcloud.com/clhmusic/sets/punk-fr",
+                    "https://soundcloud.com/clhmusic/sets/sounds-from-rikikikiki",
+                    "https://soundcloud.com/clhmusic/sets/rock-francais",
+                    "https://soundcloud.com/clhmusic/sets/i-like-it-punk-sometimes",
+                    "https://soundcloud.com/clhmusic/sets/i-like-it-raw-sometimes",
+                    "https://soundcloud.com/pennywisdom/sets/never-gonna-die-3",
+                    "https://soundcloud.com/pennywisdom/sets/all-or-nothing-23"
+                ]},
+                "hip-hop": { label: "zemix Hip-Hop", urls:[
+                    "https://soundcloud.com/clhmusic/sets/lourd-ep",
+                    "https://soundcloud.com/clhmusic/sets/hip-hop",
+                    "https://soundcloud.com/clhmusic/sets/hip-hop-fr",
+                    "https://soundcloud.com/clhmusic/sets/hip-hop-en",
+                    "https://soundcloud.com/clhmusic/sets/lourd-ep",
+                    "https://soundcloud.com/clhmusic/sets/lourd-ep",
+                    "https://soundcloud.com/clhmusic/sets/lourd-ep",
+                    "https://soundcloud.com/clhmusic/sets/lourd-ep",
+                    "https://soundcloud.com/clhmusic/sets/lourd-ep",
+                    "https://soundcloud.com/clhmusic/sets/lourd-ep",
+                    "https://soundcloud.com/clhmusic/sets/lourd-ep",
+                    "https://soundcloud.com/clhmusic/sets/drum-d-draft-a-must-to-listen",
+                    "https://soundcloud.com/kenyarkana/sets/etat-durgence-2",
+                    "https://soundcloud.com/kenyarkana/sets/tout-tourne-autour-du-soleil",
+                    "https://soundcloud.com/clhmusic/sets/lourd-ep"
+                ]},
+                "drumd": { label: "DRUMD", urls:[
+                    "https://soundcloud.com/clhmusic/sets/drum-d-draft-a-must-to-listen"
+                ]},
+                "quessada": { label: "Quessada", urls:[
+                    "https://soundcloud.com/quessada/sets/super-connard",
+                    "https://soundcloud.com/quessada/sets/super-sympa",
+                    "https://soundcloud.com/quessada/sets/jai-rate-ma-vie",
+                    "https://soundcloud.com/quessada/sets/la-fin-du-monde",
+                    "https://soundcloud.com/quessada/sets/super-connard",
+                    "https://soundcloud.com/quessada/sets/super-sympa",
+                    "https://soundcloud.com/quessada/sets/jai-rate-ma-vie",
+                    "https://soundcloud.com/quessada/sets/la-fin-du-monde"
+                ]},
+                "kenyarkana": { label: "Keny Arkana", urls:[
+                    "https://soundcloud.com/kenyarkana/sets/avant-lexode",
+                    "https://soundcloud.com/kenyarkana/sets/tout-tourne-autour-du-soleil",
+                    "https://soundcloud.com/kenyarkana/sets/lesquisse-3",
+                    "https://soundcloud.com/kenyarkana/sets/etat-durgence-2",
+                    "https://soundcloud.com/kenyarkana/sets/entre-ciment-et-belle-etoile",
+                    "https://soundcloud.com/kenyarkana/sets/desobeissance",
+                    "https://soundcloud.com/kenyarkana/sets/lesquisse-1",
+                    "https://soundcloud.com/kenyarkana/sets/lesquisse-2"
+                ]},
+                "bojuju": { label: "Julien Ribot", urls:[
+                    "https://soundcloud.com/julienribot/sets/do-you-feel-9-2",
+                    "https://soundcloud.com/julienribot/sets/songs-for-coco-1"
+                ]}
+            };
+
+            const saved = localStorage.getItem('radio_gs_data');
+            this.stations = saved ? JSON.parse(saved) : defaultStations;
+            
+            this.checkImport();
+
+            const hash = decodeURIComponent(window.location.hash.substring(1));
+            const firstStation = Object.keys(this.stations)[0];
+            this.currentStation = this.stations[hash] ? hash : firstStation;
+            
+            this.playlists = this.stations[this.currentStation].urls;
+
+            this.widget = null;
+            this.isPlaying = false;
+            this.isTuning = false;
+            
+            this.ui = {
+                landing: document.getElementById('landing'),
+                player: document.getElementById('player-ui'),
+                permTitle: document.getElementById('permanent-title'),
+                artist: document.getElementById('artist-name'),
+                art: document.getElementById('artwork'),
+                playIcon: document.getElementById('icon-play'),
+                pauseIcon: document.getElementById('icon-pause'),
+                progBar: document.getElementById('progress-bar'),
+                currTime: document.getElementById('curr-time'),
+                totalTime: document.getElementById('total-time'),
+                status: document.getElementById('status-text'),
+                indicator: document.getElementById('status-indicator'),
+                freq: document.getElementById('freq-id'),
+                ambient: document.getElementById('ambient-bg'),
+                history: document.getElementById('modal-history-list'),
+                editorModal: document.getElementById('system-modal'),
+                editorArea: document.getElementById('playlist-data')
+            };
+
+            document.getElementById('progress-area').addEventListener('click', (e) => {
+                if(!this.widget) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                const p = (e.clientX - rect.left) / rect.width;
+                this.widget.getDuration(d => this.widget.seekTo(d * p));
             });
         }
 
-        function showUpdateToast(worker) {
-            const el = document.createElement('div');
-            el.setAttribute('role', 'status');
-            el.style.cssText = `
-                position:fixed; bottom:1.5rem; left:50%; transform:translateX(-50%);
-                background:var(--bg-dark); border:1px solid var(--accent); color:var(--accent);
-                padding:0.75rem 1.25rem; font-family:'JetBrains Mono', monospace; font-size:10px;
-                letter-spacing:0.15em; text-transform:uppercase; z-index:9999; cursor:pointer;
-                box-shadow:0 10px 30px rgba(0,0,0,0.6);
-            `;
-            el.textContent = 'UPDATE_AVAILABLE // TAP_TO_RELOAD';
-            el.addEventListener('click', () => worker.postMessage({ type: 'SKIP_WAITING' }));
-            document.body.appendChild(el);
+        init(slug) {
+            const station = this.stations[slug];
+            if (!station) return;
+
+            this.currentStation = slug;
+            this.playlists = station.urls;
+            window.location.hash = slug;
+
+            // Met à jour le logo dynamiquement
+            document.querySelector('.logo .marker-text').innerText = station.label.toUpperCase();
+
+            // Singleton pour les scènes (évite les doublons)
+            if (!this.bokeh) this.bokeh = new BokehScene();
+            if (!this.tilt) this.tilt = new ArtworkTilt();
+
+            this.ui.landing.style.transform = 'translateY(-100%)';
+            setTimeout(() => {
+                this.ui.player.style.opacity = '1';
+                this.ui.player.style.pointerEvents = 'auto';
+                document.querySelectorAll('.reveal-text').forEach(el => el.classList.add('active'));
+            }, 800);
+            
+            this.scan();
         }
-    </script>
+
+        renderStationSelector() {
+            const container = document.getElementById('station-selector');
+            const searchInput = document.getElementById('station-search');
+            const slugs = Object.keys(this.stations);
+            
+            container.innerHTML = '';
+
+            // Affiche la recherche seulement si > 3 stations
+            if (slugs.length > 3) {
+                searchInput.classList.remove('hidden');
+            }
+
+            const sortedSlugs = slugs.sort((a, b) => 
+                this.stations[a].label.localeCompare(this.stations[b].label)
+            );
+
+            sortedSlugs.forEach(slug => {
+                const station = this.stations[slug];
+                const btn = document.createElement('button');
+                btn.className = 'btn-start';
+                btn.setAttribute('data-label', station.label.toLowerCase()); // Pour le filtrage
+                
+                if (window.location.hash === `#${slug}`) btn.style.borderColor = 'var(--accent)';
+
+                btn.innerHTML = `<span>${station.label.toUpperCase()}</span>`;
+                btn.onclick = () => { window.location.hash = slug; this.init(slug); };
+                container.appendChild(btn);
+            });
+
+            // Logique de recherche en temps réel
+            searchInput.oninput = (e) => {
+                const val = e.target.value.toLowerCase();
+                const buttons = container.querySelectorAll('.btn-start');
+                
+                buttons.forEach(btn => {
+                    const match = btn.getAttribute('data-label').includes(val);
+                    btn.style.display = match ? 'flex' : 'none';
+                    btn.style.opacity = val.length > 0 ? (match ? '1' : '0') : '1';
+                });
+            };
+        }
+
+        generateShareLink() {
+            const station = this.stations[this.currentStation];
+            let encoded;
+            try {
+                encoded = encodeSharePayload(station.label, station.urls);
+            } catch (e) {
+                alert(`Impossible de générer le lien : ${e.message}`);
+                return;
+            }
+            const shareUrl = `${window.location.origin}${window.location.pathname}#import:${encoded}`;
+
+            // On copie dans le presse-papier
+            navigator.clipboard.writeText(shareUrl).then(() => {
+                alert("Lien de partage copié ! (Zéro-Server)");
+            });
+        }
+
+        // Dans ta classe AudioApp
+        goBackToLanding() {
+            window.location.hash = "";
+            this.ui.player.style.opacity = '0';
+            this.ui.player.style.pointerEvents = 'none';
+            this.ui.landing.style.transform = 'translateY(0)';
+            if(this.widget) this.widget.pause();
+        }
+
+        checkImport() {
+            const hash = window.location.hash;
+            if (!hash.startsWith('#import:')) return;
+            try {
+                const { label, urls } = decodeSharePayload(hash.slice('#import:'.length));
+
+                const baseSlug = this.slugify(label);
+                let targetSlug = baseSlug;
+                let targetLabel = label;
+                const existing = this.stations[baseSlug];
+
+                if (existing) {
+                    const sameUrls = JSON.stringify(existing.urls) === JSON.stringify(urls);
+                    if (sameUrls) {
+                        // Already imported, just switch to it.
+                        window.location.hash = baseSlug;
+                        return;
+                    }
+                    const overwrite = confirm(
+                        `Station "${existing.label}" already exists locally with different tracks.\n\n` +
+                        `OK = overwrite with shared version\nCancel = keep both (import as a copy)`
+                    );
+                    if (!overwrite) {
+                        let n = 2;
+                        while (this.stations[`${baseSlug}-${n}`]) n++;
+                        targetSlug = `${baseSlug}-${n}`;
+                        targetLabel = `${label} (${n})`;
+                    }
+                }
+
+                this.stations[targetSlug] = { label: targetLabel, urls };
+                localStorage.setItem('radio_gs_data', JSON.stringify(this.stations));
+                window.location.hash = targetSlug;
+                alert(`Station "${targetLabel}" importée avec succès !`);
+            } catch (e) {
+                console.error("Erreur d'importation :", e);
+                alert(`Erreur d'importation : ${e.message}`);
+            }
+        }
+
+        scan() {
+            if(this.isTuning) return;
+            this.isTuning = true;
+            this.updateStatus('SCANNING', 'var(--accent)');
+            this.bokeh.setMode('tuning');
+            this.ui.art.style.opacity = '0.2';
+            this.ui.art.style.filter = 'grayscale(1) blur(10px)';
+            
+            const url = this.playlists[Math.floor(Math.random() * this.playlists.length)];
+            this.ui.freq.innerText = (Math.random() * 100 + 88).toFixed(1);
+
+            if(!this.widget) {
+                const container = document.getElementById('sc-engine-container');
+                container.innerHTML = `<iframe id="sc-widget" src="https://w.soundcloud.com/player/?url=${url}&auto_play=false&show_artwork=true&visual=false&hide_related=true&show_comments=false&show_user=false&show_reposts=false" width="100%" height="166" scrolling="no" frameborder="no" allow="autoplay; encrypted-media"></iframe>`;
+
+                this.widget = SC.Widget(document.getElementById('sc-widget'));
+                this.widget.bind(SC.Widget.Events.READY, () => {
+                    this.widget.bind(SC.Widget.Events.PLAY, () => this.onPlay());
+                    this.widget.bind(SC.Widget.Events.PAUSE, () => this.onPause());
+                    this.widget.bind(SC.Widget.Events.FINISH, () => this.scan());
+                    this.widget.bind(SC.Widget.Events.PLAY_PROGRESS, (e) => this.onProgress(e));
+                    this.playRandom();
+                });
+            } else {
+                this.widget.load(url, { auto_play: false, callback: () => this.playRandom() });
+            }
+        }
+
+        toggleSystemMenu() {
+            const modal = document.getElementById('system-modal');
+            const isOpening = modal.classList.contains('hidden');
+            
+            modal.classList.toggle('hidden');
+
+            if (isOpening) {
+                // 1. On injecte les URLs de la station actuelle dans le textarea
+                // On utilise .join('\n') pour avoir une URL par ligne, bien propre.
+                this.ui.editorArea.value = this.playlists.join('\n');
+
+                // 2. On s'assure d'être sur l'onglet EDIT par défaut
+                this.switchTab('edit');
+
+                // 3. On synchronise les logs historiques
+                const modalList = document.getElementById('modal-history-list');
+                if (modalList) modalList.innerHTML = this.ui.history.innerHTML;
+            }
+        }
+
+        switchTab(tabId) {
+            // Boutons
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
+            // Contenus
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+            document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+
+            if (tabId === 'share') this.updateQRCode();
+        }
+
+        updateQRCode() {
+            const station = this.stations[this.currentStation];
+            let encoded;
+            try {
+                encoded = encodeSharePayload(station.label, station.urls);
+            } catch (e) {
+                console.error('QR encode failed:', e);
+                return;
+            }
+            const shareUrl = `${window.location.origin}${window.location.pathname}#import:${encoded}`;
+
+            // Utilisation d'une API QR Code gratuite (type QRServer ou GoQR)
+            const qrApi = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(shareUrl)}&color=000000&bgcolor=FFFFFF`;
+            document.getElementById('qrcode-img').src = qrApi;
+        }
+
+        toggleEditor() {
+            const isHidden = this.ui.editorModal.classList.contains('hidden');
+            if (isHidden) {
+                // On affiche les playlists sous forme de liste propre (une par ligne)
+                this.ui.editorArea.value = this.playlists.join('\n');
+                this.ui.editorModal.classList.remove('hidden');
+            } else {
+                this.ui.editorModal.classList.add('hidden');
+            }
+        }
+
+        slugify(text) {
+            return text
+                .toString()
+                .toLowerCase()
+                .normalize('NFD') // Sépare les accents des lettres
+                .replace(/[\u0300-\u036f]/g, '') // Supprime les accents
+                .replace(/\s+/g, '-') // Remplace les espaces par des tirets
+                .replace(/[^\w\-]+/g, '') // Supprime tout ce qui n'est pas mot ou tiret
+                .replace(/\-\-+/g, '-') // Évite les doubles tirets
+                .replace(/^-+/, '') // Supprime les tirets au début
+                .replace(/-+$/, ''); // Supprime les tirets à la fin
+        }
+
+        createNewStation() {
+            const rawName = prompt("NOM DE LA RADIO :");
+            if (!rawName) return;
+
+            const slug = this.slugify(rawName);
+            
+            if (slug.length === 0) {
+                alert("Nom invalide.");
+                return;
+            }
+
+            if (this.stations[slug]) {
+                alert("Cette station (slug) existe déjà.");
+                return;
+            }
+
+            // On stocke un objet plutôt qu'un simple tableau pour garder le nom propre
+            this.stations[slug] = {
+                label: rawName.trim(),
+                urls: ["https://soundcloud.com/clhmusic/sets/r-d-j45"]
+            };
+
+            localStorage.setItem('radio_gs_data', JSON.stringify(this.stations));
+            this.renderStationSelector();
+        }
+
+        savePlaylists() {
+            const lines = this.ui.editorArea.value.split('\n')
+                .map(line => line.trim())
+                .filter(line => line.length > 5);
+
+            const STORAGE_KEY = 'radio_gs_data'; // Utilise une constante unique
+
+            // CAS 1 : SUPPRESSION
+            if (lines.length === 0) {
+                const stationKeys = Object.keys(this.stations);
+                
+                if (stationKeys.length > 1) {
+                    if (confirm(`DELETE_STATION: ${this.stations[this.currentStation].label}?`)) {
+                        delete this.stations[this.currentStation];
+                        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.stations));
+                        
+                        // Au lieu de reload, on nettoie et on retourne au landing
+                        window.location.hash = ""; 
+                        location.reload(); // Ici le reload est "safe" car on a vidé le hash
+                        return;
+                    }
+                } else {
+                    alert("ACTION_DENIED: Minimum 1 station required.");
+                    return;
+                }
+            }
+            
+            // CAS 2 : MISE À JOUR
+            if (lines.length > 0) {
+                // On met à jour l'objet global
+                this.stations[this.currentStation].urls = lines;
+                // On met à jour la référence active pour le prochain scan()
+                this.playlists = lines;
+                
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(this.stations));
+                
+                this.ui.editorModal.classList.add('hidden');
+                this.updateStatus(`STATION ${this.currentStation.toUpperCase()} UPDATED`, 'var(--accent)');
+                
+                // Petit feedback visuel avant de relancer
+                setTimeout(() => this.scan(), 500);
+            }
+        }
+
+        playRandom() {
+            this.widget.getSounds(s => {
+                if(!s || s.length === 0) return this.scan();
+                
+                // On choisit un morceau au hasard
+                const randomIndex = Math.floor(Math.random() * s.length);
+                this.widget.skip(randomIndex);
+
+                // On attend un court instant que le widget soit prêt pour le nouveau morceau
+                setTimeout(() => { 
+                    this.widget.play(); 
+                    this.isTuning = false; 
+                }, 1200); // Augmenter légèrement à 1200ms pour laisser le buffer se créer
+            });
+        }
+
+        onPlay() {
+            this.isPlaying = true;
+            this.ui.playIcon.classList.add('hidden');
+            this.ui.pauseIcon.classList.remove('hidden');
+            this.updateStatus('LIVE', 'var(--accent)');
+            this.bokeh.setMode('playing');
+            this.ui.art.style.opacity = '1';
+            this.ui.art.style.filter = 'grayscale(0) blur(0)';
+            this.widget.getCurrentSound(s => this.updateTrack(s));
+        }
+
+        onPause() {
+            this.isPlaying = false;
+            this.ui.playIcon.classList.remove('hidden');
+            this.ui.pauseIcon.classList.add('hidden');
+            this.updateStatus('PAUSED', '#555');
+        }
+
+        onProgress(e) {
+            this.ui.progBar.style.width = (e.relativePosition * 100) + '%';
+            this.ui.currTime.innerText = this.formatTime(e.currentPosition);
+        }
+
+        updateTrack(s) {
+            if(!s) return;
+            this.ui.permTitle.innerText = s.title.toUpperCase();
+            this.ui.permTitle.href = s.permalink_url;
+            this.ui.artist.innerText = s.user.username;
+            this.ui.artist.href = s.permalink_url;
+            this.ui.totalTime.innerText = this.formatTime(s.duration);
+            
+            let img = s.artwork_url || s.user.avatar_url;
+            if(img) {
+                const hd = img.replace('large', 't500x500');
+                this.ui.art.src = hd;
+                this.ui.ambient.style.backgroundImage = `url(${hd})`;
+                this.ui.ambient.style.opacity = '1';
+                this.extractColor(hd);
+            }
+            this.logHistory(s);
+        }
+
+        extractColor(url) {
+            const img = new Image();
+            img.crossOrigin = "Anonymous";
+            const fallback = () => document.documentElement.style.setProperty('--accent', '#D4FF00');
+            img.onerror = fallback;
+            img.onload = () => {
+                try {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = 1; canvas.height = 1;
+                    ctx.drawImage(img, 0, 0, 1, 1);
+                    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+                    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                    const color = brightness < 40 ? '#D4FF00' : `rgb(${r},${g},${b})`;
+                    document.documentElement.style.setProperty('--accent', color);
+                } catch (e) {
+                    // Canvas read tainted — SoundCloud's CDN doesn't always send CORS headers.
+                    fallback();
+                }
+            };
+            img.src = url;
+        }
+
+        logHistory(s) {
+            if (!s || !this.ui.history) return;
+            // Dedupe consecutive repeats — pause/resume or seek can refire PLAY.
+            if (this._lastLoggedId === s.id) return;
+            this._lastLoggedId = s.id;
+
+            const item = document.createElement('div');
+            item.className = 'history-item';
+            item.innerHTML = `
+                <a href="${s.permalink_url}" target="_blank" class="history-link">${s.title.toUpperCase()}</a>
+                <div style="font-size:9px; color:#555">${s.user.username}</div>
+            `;
+            this.ui.history.prepend(item);
+
+            // Cap list length so long sessions don't grow unbounded.
+            while (this.ui.history.children.length > 50) {
+                this.ui.history.lastElementChild.remove();
+            }
+        }
+
+        updateStatus(text, color) {
+            this.ui.status.innerText = text;
+            this.ui.status.style.color = color;
+            this.ui.indicator.style.background = color;
+        }
+
+        formatTime(ms) {
+            const m = Math.floor(ms/60000);
+            const s = Math.floor((ms%60000)/1000);
+            return `${m}:${s < 10 ? '0' : ''}${s}`;
+        }
+
+        togglePlay() { this.widget.toggle(); }
+    }
+
+    const app = new AudioApp();
+    app.renderStationSelector();
+
+    const initialHash = decodeURIComponent(window.location.hash.substring(1));
+    if (initialHash && app.stations[initialHash]) {
+        app.init(initialHash);
+    }
+
+    // --- PWA: service worker registration + update toast ---
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').then((reg) => {
+                // When a new SW is installed while the page is open, notify.
+                reg.addEventListener('updatefound', () => {
+                    const incoming = reg.installing;
+                    if (!incoming) return;
+                    incoming.addEventListener('statechange', () => {
+                        if (incoming.state === 'installed' && navigator.serviceWorker.controller) {
+                            showUpdateToast(incoming);
+                        }
+                    });
+                });
+            }).catch((err) => console.warn('SW registration failed:', err));
+
+            // Reload once the new SW has taken control.
+            let reloading = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (reloading) return;
+                reloading = true;
+                location.reload();
+            });
+        });
+    }
+
+    function showUpdateToast(worker) {
+        const el = document.createElement('div');
+        el.setAttribute('role', 'status');
+        el.style.cssText = `
+            position:fixed; bottom:1.5rem; left:50%; transform:translateX(-50%);
+            background:var(--bg-dark); border:1px solid var(--accent); color:var(--accent);
+            padding:0.75rem 1.25rem; font-family:'JetBrains Mono', monospace; font-size:10px;
+            letter-spacing:0.15em; text-transform:uppercase; z-index:9999; cursor:pointer;
+            box-shadow:0 10px 30px rgba(0,0,0,0.6);
+        `;
+        el.textContent = 'UPDATE_AVAILABLE // TAP_TO_RELOAD';
+        el.addEventListener('click', () => worker.postMessage({ type: 'SKIP_WAITING' }));
+        document.body.appendChild(el);
+    }
+</script>
 </body>
 </html>
