@@ -47,6 +47,3 @@ The service worker precaches the app shell and falls back to a cached `index.htm
 - PRs welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md). **One file, no build.**
 - Licensed under [MIT](LICENSE).
 
-## Status
-
-v0.7 — will be open-sourced on v1.
